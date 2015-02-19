@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 var cluster = require('cluster');
 
@@ -14,45 +14,47 @@ var express = require('express'),
 	child_process = require('child_process'),
 	request = require('request-promise'),
 	Promise = require('promise'), // https://www.npmjs.com/package/promise
-	http = require("http"),
+	http = require('http'),
 	url = require('url'),
 	querystring = require('querystring'),
 	vega = null; // Visualization grammar - https://github.com/trifacta/vega
 
 
 try{
-	vega = require("vega");
+	vega = require('vega');
 } catch(err) {
-	console.log(err)
+	console.log(err);
 }
 
 var config;
 
 // Get the config
 try {
-	config = JSON.parse(fs.readFileSync('./graphoid.config.json', 'utf8'));
+	config = require('./graphoid.config.json');
 } catch ( e ) {
-	console.error("Please set up your graphoid.config.json");
+	console.error('Please set up your graphoid.config.json');
 	process.exit(1);
 }
 
-var serverRe = new RegExp('^([-a-z0-9]+\.)?(m\.|zero\.)?(' + config.domains.join('|') + ')$');
+var serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + config.domains.join('|') + ')$');
 
 if (vega) {
 	vega.config.domainWhiteList = config.domains;
 	vega.config.safeMode = true;
 }
 
+// NOTE: there are a few libraries that do this
 function merge() {
-	var result = {};
-	for (var i = 0; i < arguments.length; i++) {
-		var obj = arguments[i];
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				result[key] = obj[key];
-			}
-		}
-	}
+	var result = {},
+		args = Array.prototype.slice.apply(arguments);
+	console.log(args);
+
+	args.forEach(function (arg) {
+		Object.getOwnPropertyNames(arg).forEach(function (prop) {
+			result[prop] = arg[prop];
+		});
+	});
+
 	return result;
 }
 
@@ -64,34 +66,37 @@ function getSpec(server, action, qs, id) {
 
 	processResult = function (response) {
 		var body = JSON.parse(response);
-		if ('error' in body) {
-			throw 'API result error: ' + data.error;
+		if (body.hasOwnProperty('error')) {
+			throw 'API result error: ' + body.error;
 		}
-		if ('warnings' in body) {
+		if (body.hasOwnProperty('warnings')) {
 			console.log('API warning: ' + JSON.stringify(body.warnings) + ' while getting ' + JSON.stringify({
 				url: url,
 				opts: qs
 			}));
 		}
-		if ('query' in body && 'pages' in body.query) {
-			var obj = body.query.pages;
-			for (var k in obj) {
-				if (obj.hasOwnProperty(k)) {
-					var page = obj[k];
-					if ('pageprops' in page && 'graph_specs' in page.pageprops) {
-						var gs = JSON.parse(page.pageprops.graph_specs);
-						if (id in gs) {
-							return gs[id];
-						}
+		if (body.hasOwnProperty('query') && body.query.hasOwnProperty('pages')) {
+			var pages = body.query.pages,
+				graph_spec = null;
+
+			Object.getOwnPropertyNames(pages).some(function (k) {
+				var page = pages[k];
+				if (page.hasOwnProperty('pageprops') && page.pageprops.hasOwnProperty('graph_specs')) {
+					var gs = JSON.parse(page.pageprops.graph_specs);
+					if (gs.hasOwnProperty(id)) {
+						graph_spec = gs[id];
+						return true;
 					}
 				}
+				return false;
+			});
+
+			if (graph_spec) {
+				return graph_spec;
 			}
 		}
-		if ('continue' in body) {
-			return callApiInt(url, merge(qs, body.continue));
-		} else {
-			return false;
-		}
+		return body.hasOwnProperty('continue') ?
+			callApiInt(url, merge(qs, body.continue)) : false;
 	};
 
 	callApiInt = function(url, options) {
@@ -117,19 +122,20 @@ function getSpec(server, action, qs, id) {
 
 function validateRequest(req) {
 	var query = url.parse(req.url, true).query;
-	if (!('revid' in query)) {
+
+	if (!query.hasOwnProperty('revid')) {
 		throw 'no revid';
 	}
-	if (String(Math.abs(~~Number(query.revid))) !== query.revid) {
+	if (!/^[0-9]+$/.test(query.revid)) {
 		// must be a non-negative integer
 		throw 'bad revid param';
 	}
 	// In case we switch to title, make sure to fail on query.title.indexOf('|') > -1
 
-	if (!('id' in query)) {
+	if (!query.hasOwnProperty('id')) {
 		throw 'no id param';
 	}
-	if (!('server' in query)) {
+	if (!query.hasOwnProperty('server')) {
 		throw 'no server param';
 	}
 	// Remove optional part #2 from host (makes m. links appear as desktop to optimize cache)
@@ -155,14 +161,20 @@ function validateRequest(req) {
 function renderOnCanvas(spec, response) {
 	return new Promise(function (fulfill, reject){
 		if (!vega) {
-			throw "Unable to load Vega npm module";
+			throw 'Unable to load Vega npm module';
 		}
-		vega.headless.render({spec: spec, renderer: "canvas"}, function (err, result) {
+
+		// TODO: hack for local testing
+		// TODO: weird, but this only works some of the time
+		spec.data[1].url = 'http://www.mediawiki.org' + spec.data[1].url;
+		console.log(spec);
+
+		vega.headless.render({spec: spec, renderer: 'canvas'}, function (err, result) {
 			if (err) {
 				reject(err);
 			} else {
 				var stream = result.canvas.pngStream();
-				response.writeHead(200, {"Content-Type": "image/png"});
+				response.writeHead(200, {'Content-Type': 'image/png'});
 				stream.on('data', function (chunk) {
 					response.write(chunk);
 				});
@@ -191,7 +203,7 @@ var app = express(); // .createServer();
 
 // robots.txt: no indexing.
 app.get(/^\/robots.txt$/, function ( req, response ) {
-    response.end( "User-agent: *\nDisallow: /\n" );
+    response.end( 'User-agent: *\nDisallow: /\n' );
 });
 
 

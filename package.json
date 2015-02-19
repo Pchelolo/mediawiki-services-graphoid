@@ -1,0 +1,21 @@
+{
+  "name": "graphoid",
+  "version": "0.1.0",
+  "description": "renders vega graphs from mediawiki pages",
+  "keywords": [
+    "vega",
+    "graph",
+    "mediawiki"
+  ],
+  "author": "Yuri Astrakhan",
+  "contributors": [
+    "Dan Andreescu <dandreescu@wikimedia.org>"
+  ],
+  "dependencies": {
+    "express": "== 4.11.2",
+    "request-promise": "== 0.4.0",
+    "promise": "== 6.1.0",
+    "vega": "== 1.4.3"
+  },
+  "license": "MIT"
+}
