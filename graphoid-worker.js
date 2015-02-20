@@ -15,7 +15,7 @@ var express = require('express'),
 	request = require('request-promise'),
 	Promise = require('promise'), // https://www.npmjs.com/package/promise
 	http = require('http'),
-	url = require('url'),
+	urllib = require('url'),
 	querystring = require('querystring'),
 	vega = null; // Visualization grammar - https://github.com/trifacta/vega
 
@@ -23,7 +23,7 @@ var express = require('express'),
 try{
 	vega = require('vega');
 } catch(err) {
-	console.log(err);
+	console.error(err);
 }
 
 var config;
@@ -31,8 +31,12 @@ var config;
 // Get the config
 try {
 	config = require('./graphoid.config.json');
-} catch ( e ) {
-	console.error('Please set up your graphoid.config.json');
+	if (!config.hasOwnProperty('domains') || !(config.domains instanceof Array) || config.domains.length == 0) {
+		throw 'The config "domains" value must be a non-empty list of domains';
+	}
+} catch (err) {
+	console.error('Error loading graphoid.config.json');
+	console.error(err);
 	process.exit(1);
 }
 
@@ -40,6 +44,7 @@ var serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + config.domains.j
 
 if (vega) {
 	vega.config.domainWhiteList = config.domains;
+	vega.config.defaultProtocol = config.defaultProtocol || 'http:';
 	vega.config.safeMode = true;
 }
 
@@ -47,7 +52,6 @@ if (vega) {
 function merge() {
 	var result = {},
 		args = Array.prototype.slice.apply(arguments);
-	console.log(args);
 
 	args.forEach(function (arg) {
 		Object.getOwnPropertyNames(arg).forEach(function (prop) {
@@ -67,10 +71,10 @@ function getSpec(server, action, qs, id) {
 	processResult = function (response) {
 		var body = JSON.parse(response);
 		if (body.hasOwnProperty('error')) {
-			throw 'API result error: ' + body.error;
+			throw 'API result error: ' + JSON.stringify(body.error);
 		}
 		if (body.hasOwnProperty('warnings')) {
-			console.log('API warning: ' + JSON.stringify(body.warnings) + ' while getting ' + JSON.stringify({
+			console.error('API warning: ' + JSON.stringify(body.warnings) + ' while getting ' + JSON.stringify({
 				url: url,
 				opts: qs
 			}));
@@ -110,7 +114,7 @@ function getSpec(server, action, qs, id) {
 		return request(reqOpts)
 			.then(processResult)
 			.catch(function (reason) {
-				console.log(JSON.stringify(reqOpts));
+				console.error(JSON.stringify(reqOpts));
 				throw reason; // re-throw
 			});
 	};
@@ -121,7 +125,7 @@ function getSpec(server, action, qs, id) {
 }
 
 function validateRequest(req) {
-	var query = url.parse(req.url, true).query;
+	var query = urllib.parse(req.url, true).query;
 
 	if (!query.hasOwnProperty('revid')) {
 		throw 'no revid';
@@ -158,16 +162,14 @@ function validateRequest(req) {
 	};
 }
 
-function renderOnCanvas(spec, response) {
+function renderOnCanvas(spec, server, response) {
 	return new Promise(function (fulfill, reject){
 		if (!vega) {
 			throw 'Unable to load Vega npm module';
 		}
 
-		// TODO: hack for local testing
-		// TODO: weird, but this only works some of the time
-		spec.data[1].url = 'http://www.mediawiki.org' + spec.data[1].url;
-		console.log(spec);
+		// In case of non-absolute URLs, use requesting server as "local"
+		vega.config.baseURL = vega.config.defaultProtocol + '//' + server;
 
 		vega.headless.render({spec: spec, renderer: 'canvas'}, function (err, result) {
 			if (err) {
@@ -222,13 +224,13 @@ app.get('/', function(req, response) {
 		}).then(function (spec) {
 			// render graph on canvas
 			// bug: timeout might happen right in the middle of streaming
-			return renderOnCanvas(spec, response);
+			return renderOnCanvas(spec, params.server, response);
 		});
 
-	// Limit request to 10 seconds, handle all errors
-	timeout(render, 10000)
+	// Limit request to 10 seconds by default, handle all errors
+	timeout(render, config.timeout || 10000)
 		.catch(function (reason) {
-			console.log(reason + (params ? '\n' + JSON.stringify(params) : ''));
+			console.error(reason + (params ? '\n' + JSON.stringify(params) : ''));
 			response.writeHead(400);
 			response.end(JSON.stringify(reason));
 		});

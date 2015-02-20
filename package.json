@@ -1,21 +1,30 @@
 {
-  "name": "graphoid",
+  "name": "Graphoid",
   "version": "0.1.0",
   "description": "renders vega graphs from mediawiki pages",
+  "homepage": "https://www.mediawiki.org/wiki/Extension:Graph",
   "keywords": [
     "vega",
     "graph",
     "mediawiki"
   ],
-  "author": "Yuri Astrakhan",
+  "author": "Yuri Astrakhan <yurik at wikimedia org>",
   "contributors": [
     "Dan Andreescu <dandreescu@wikimedia.org>"
   ],
-  "dependencies": {
-    "express": "== 4.11.2",
-    "request-promise": "== 0.4.0",
-    "promise": "== 6.1.0",
-    "vega": "== 1.4.3"
+  "repository": {
+    "type": "git",
+    "url": "https://gerrit.wikimedia.org/r/mediawiki/services/graphoid"
   },
-  "license": "MIT"
+  "bugs": {
+    "url": "https://phabricator.wikimedia.org/tag/services/"
+  },
+  "dependencies": {
+    "express": "^4.11.2",
+    "request-promise": "^0.4.0",
+    "promise": "^6.1.0",
+    "vega": "git+http://git@github.com/nyurik/vega"
+  },
+  "license": "MIT",
+  "private": true
 }
