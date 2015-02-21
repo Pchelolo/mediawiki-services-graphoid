@@ -10,13 +10,9 @@ var instanceName = cluster.isWorker ? 'worker(' + process.pid + ')' : 'master';
 console.log( ' - ' + instanceName + ' loading...' );
 
 var express = require('express'),
-	fs = require('fs'),
-	child_process = require('child_process'),
 	request = require('request-promise'),
 	Promise = require('promise'), // https://www.npmjs.com/package/promise
-	http = require('http'),
 	urllib = require('url'),
-	querystring = require('querystring'),
 	vega = null; // Visualization grammar - https://github.com/trifacta/vega
 
 
@@ -31,21 +27,50 @@ var config;
 // Get the config
 try {
 	config = require('./graphoid.config.json');
-	if (!config.hasOwnProperty('domains') || !(config.domains instanceof Array) || config.domains.length == 0) {
-		throw 'The config "domains" value must be a non-empty list of domains';
-	}
 } catch (err) {
 	console.error('Error loading graphoid.config.json');
 	console.error(err);
 	process.exit(1);
 }
 
-var serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + config.domains.join('|') + ')$');
+// A list of allowed hosts
+config.domains = config.domains || [];
+
+// A set of 'oldHost' => 'newHost' mappings
+config.domainMap = config.domainMap || {};
+
+// For protocol-relative URLs  (they begin with //), which protocol should we use
+config.defaultProtocol = config.defaultProtocol || 'http:';
+
+// Limit request to 10 seconds by default
+config.timeout = config.timeout || 10000;
+
+var validDomains = config.domains.concat(Object.getOwnPropertyNames(config.domainMap));
+
+if (validDomains.length == 0) {
+	console.error('Config must have non-empty "domains" (list) and/or "domainMap" (dict)');
+	process.exit(1);
+}
+
+var serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + validDomains.join('|') + ')$');
 
 if (vega) {
 	vega.config.domainWhiteList = config.domains;
-	vega.config.defaultProtocol = config.defaultProtocol || 'http:';
+	vega.config.defaultProtocol = config.defaultProtocol;
 	vega.config.safeMode = true;
+	if (Object.getOwnPropertyNames(config.domainMap) > 0) {
+		var originalSanitize = vega.data.load.sanitizeUrl;
+		vega.data.load.sanitizeUrl = function(url) {
+			url = originalSanitize(url);
+			if (url) {
+				url = url.replace(/^(https?:\/\/)([-a-z0-9.]+)/, function(match, prot, host){
+					var repl = config.domainMap[host];
+					return repl ? prot + repl : match;
+				});
+			}
+			return url;
+		};
+	}
 }
 
 // NOTE: there are a few libraries that do this
@@ -81,26 +106,28 @@ function getSpec(server, action, qs, id) {
 		}
 		if (body.hasOwnProperty('query') && body.query.hasOwnProperty('pages')) {
 			var pages = body.query.pages,
-				graph_spec = null;
+				graphData = null;
 
 			Object.getOwnPropertyNames(pages).some(function (k) {
 				var page = pages[k];
 				if (page.hasOwnProperty('pageprops') && page.pageprops.hasOwnProperty('graph_specs')) {
 					var gs = JSON.parse(page.pageprops.graph_specs);
 					if (gs.hasOwnProperty(id)) {
-						graph_spec = gs[id];
+						graphData = gs[id];
 						return true;
 					}
 				}
 				return false;
 			});
 
-			if (graph_spec) {
-				return graph_spec;
+			if (graphData) {
+				return graphData;
 			}
 		}
-		return body.hasOwnProperty('continue') ?
-			callApiInt(url, merge(qs, body.continue)) : false;
+		if (body.hasOwnProperty('continue')) {
+			callApiInt(url, merge(qs, body.continue));
+		}
+		throw 'Unable to find graph_specs with the given id';
 	};
 
 	callApiInt = function(url, options) {
@@ -125,14 +152,30 @@ function getSpec(server, action, qs, id) {
 }
 
 function validateRequest(req) {
-	var query = urllib.parse(req.url, true).query;
+	var query = urllib.parse(req.url, true).query,
+		api = {
+			prop: 'pageprops',
+			ppprop: 'graph_specs',
+			continue: ''
+		},
+		revid = 0;
 
-	if (!query.hasOwnProperty('revid')) {
-		throw 'no revid';
+	if (query.hasOwnProperty('revid')) {
+		if (!/^[0-9]+$/.test(query.revid)) {
+			// must be a non-negative integer
+			throw 'bad revid param';
+		}
+		revid = parseInt(query.revid);
 	}
-	if (!/^[0-9]+$/.test(query.revid)) {
-		// must be a non-negative integer
-		throw 'bad revid param';
+	if (revid) {
+		api.revids = revid;
+	} else if (query.hasOwnProperty('title')) {
+		if (query.title.indexOf('|') > -1) {
+			throw 'bad title param';
+		}
+		api.titles = query.title;
+	} else {
+		throw 'no revid or title given';
 	}
 	// In case we switch to title, make sure to fail on query.title.indexOf('|') > -1
 
@@ -149,15 +192,12 @@ function validateRequest(req) {
 	if (!srvParts) {
 		throw 'bad server param';
 	}
+	var server = (srvParts[1] || '') + srvParts[3];
+
 	return {
-		server: (srvParts[1] || '') + srvParts[3],
+		server: config.domainMap[server] || server,
 		action: 'query',
-		query: {
-			revids: query.revid,
-			prop: 'pageprops',
-			ppprop: 'graph_specs',
-			continue: ''
-		},
+		query: api,
 		id: query.id
 	};
 }
@@ -201,7 +241,7 @@ function timeout(promise, time) {
 	})]);
 }
 
-var app = express(); // .createServer();
+var app = express();
 
 // robots.txt: no indexing.
 app.get(/^\/robots.txt$/, function ( req, response ) {
@@ -227,10 +267,12 @@ app.get('/', function(req, response) {
 			return renderOnCanvas(spec, params.server, response);
 		});
 
-	// Limit request to 10 seconds by default, handle all errors
-	timeout(render, config.timeout || 10000)
+	timeout(render, config.timeout)
 		.catch(function (reason) {
-			console.error(reason + (params ? '\n' + JSON.stringify(params) : ''));
+			console.error(reason + '\nURL=' + req.url);
+			if (reason.hasOwnProperty('stack')) {
+				console.error(reason.stack);
+			}
 			response.writeHead(400);
 			response.end(JSON.stringify(reason));
 		});
