@@ -1,10 +1,16 @@
 'use strict';
 
+var express = require('express'),
+    preq = require('preq'),
+    Promise = require('bluebird'),
+    vega = null; // Visualization grammar - https://github.com/trifacta/vega
 
-var BBPromise = require('bluebird');
-var express = require('express');
-var preq = require('preq');
-var domino = require('domino');
+try{
+    // Simplify debugging when vega is not available
+    vega = require('vega');
+} catch(err) {
+    console.error(err);
+}
 
 
 /**
@@ -13,153 +19,283 @@ var domino = require('domino');
 var router = express.Router();
 
 /**
- * The main application object reported when this module is require()d
+ * A list of allowed hosts
  */
-var app;
-
+var domains = [];
 
 /**
- * GET /siteinfo/{uri}{/prop}
- * Fetches site info for a wiki with the given URI, optionally
- * returning only the specified property. This example shows how to:
- * 1) use named URI parameters (by prefixing them with a colon)
- * 2) use optional URI parameters (by suffixing them with a question mark)
- * 3) extract URI parameters
- * 4) issue external requests
- * 5) use Promises to achieve (4) and return the result
- *
- * URI parsing doc: https://www.npmjs.com/package/path-to-regexp
- *
- * There are multiple ways of calling this endpoint:
- * 1) GET /v1/siteinfo/en.wikipedia.org
- * 2) GET /v1/siteinfo/en.wikipedia.org/mainpage (or other props available in
- *      the general siprop, as supported by MWAPI)
+ * A set of 'oldHost' => 'newHost' mappings
  */
-router.get('/siteinfo/:uri/:prop?', function(req, res) {
-
-    // construct the request for the MW Action API
-    var apiReq = {
-        uri: 'http://' + req.params.uri + '/w/api.php' ,
-        body: {
-            format: 'json',
-            action: 'query',
-            meta: 'siteinfo',
-            continue: ''
-        }
-    };
-
-    // send it
-    // NOTE: preq uses bluebird, so we can safely chain it with a .then() call
-    preq.post(apiReq)
-    // and then return the result to the caller
-    .then(function(apiRes) {
-        // preq returns the parsed object
-        // check if the query succeeded
-        if(apiRes.status !== 200 || !apiRes.body.query) {
-            // there was an error in the MW API, propagate that
-            res.status(apiRes.status).json(apiRes.body);
-            return;  // important for it to be here!
-        }
-        // do we have to return only one prop?
-        if(req.params.prop) {
-            // check it exists in the response body
-            if(apiRes.body.query.general[req.params.prop] === undefined) {
-                // nope, error out
-                res.status(404).end('Property ' + req.params.prop + ' not found in MW API response!');
-                return;  // watch out not to continue this method!
-            }
-            // ok, return that prop
-            var ret = {};
-            ret[req.params.prop] = apiRes.body.query.general[req.params.prop];
-            res.status(200).json(ret);
-            return;
-        }
-        // set the response code as returned by the MW API
-        // and return the whole response (contained in body.query.general)
-        res.status(200).json(apiRes.body.query.general);
-    });
-
-});
-
-
-/****************************
- *  PAGE MASSAGING SECTION  *
- ****************************/
+var domainMap = {};
 
 /**
- * A helper function that obtains the HTML form enwiki and
- * loads it into a domino DOM document instance.
- *
- * @param {String} title the title of the page to get
- * @return {Promise} a promise resolving as the HTML element object
+ * For protocol-relative URLs  (they begin with //), which protocol should we use
  */
-function getBody(title) {
+var defaultProtocol = 'http:';
 
-    // get the page from enwiki
-    return preq.get({
-        uri: 'http://en.wikipedia.org/w/index.php',
-        query: {
-            title: title
+/**
+ * Limit request to 10 seconds by default
+ */
+var timeout = 10000;
+
+/**
+ * Regex to validate server parameter
+ */
+var serverRe = null;
+
+function init(conf) {
+
+    domains = conf.domains || domains;
+    domainMap = conf.domainMap || domainMap;
+    timeout = conf.timeout || timeout;
+    defaultProtocol = conf.defaultProtocol || defaultProtocol;
+    if (!defaultProtocol.endsWith(':')) {
+        // colon in YAML has special meaning, allow it to be skipped
+        defaultProtocol = defaultProtocol + ':';
+    }
+
+    var validDomains = domains.concat(Object.getOwnPropertyNames(domainMap));
+
+    if (validDomains.length == 0) {
+        console.error('Config must have non-empty "domains" (list) and/or "domainMap" (dict)');
+        process.exit(1);
+    }
+
+    serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + validDomains.join('|') + ')$');
+
+    if (vega) {
+        vega.config.domainWhiteList = domains;
+        vega.config.defaultProtocol = defaultProtocol;
+        vega.config.safeMode = true;
+        if (Object.getOwnPropertyNames(domainMap) > 0) {
+            var originalSanitize = vega.data.load.sanitizeUrl;
+            vega.data.load.sanitizeUrl = function(url) {
+                url = originalSanitize(url);
+                if (url) {
+                    url = url.replace(/^(https?:\/\/)([-a-z0-9.]+)/, function(match, prot, host){
+                        var repl = domainMap[host];
+                        return repl ? prot + repl : match;
+                    });
+                }
+                return url;
+            };
         }
-    }).then(function(callRes) {
-        // and then load and parse the page
-        return domino.createDocument(callRes.body);
-    });
-
+    }
 }
 
-
-/**
- * GET /page/{title}
- * Gets the body of a given enwiki page.
+/*
+ * Utility functions
  */
-router.get('/page/:title', function(req, res) {
-    // get the page's HTML directly
-    return getBody(req.params.title)
-    // and then return it
-    .then(function(doc) {
-        res.status(200).type('html').end(doc.body.innerHTML);
+
+// NOTE: there are a few libraries that do this
+function merge() {
+    var result = {},
+        args = Array.prototype.slice.apply(arguments);
+
+    args.forEach(function (arg) {
+        Object.getOwnPropertyNames(arg).forEach(function (prop) {
+            result[prop] = arg[prop];
+        });
     });
-});
 
+    return result;
+}
+
+// Adapted from https://www.promisejs.org/patterns/
+function delay(time) {
+    return new Promise(function (fulfill) {
+        setTimeout(fulfill, time);
+    });
+}
+
+function failOnTimeout(promise, time) {
+    return time <= 0 ? promise :
+        Promise.race([promise, delay(time).then(function () {
+            throw 'Operation timed out';
+        })]);
+}
 
 /**
- * GET /page/{title}/lead
- * Gets the leading section of a given enwiki page.
+ * Parse and validate request parameters
  */
-router.get('/page/:title/lead', function(req, res) {
-    // get the page's HTML directly
-    return getBody(req.params.title)
-    // and then find the leading section and return it
-    .then(function(doc) {
-        var leadSec = '';
-        // get the content div
-        var content = doc.getElementById('mw-content-text');
-        // find all paragraphs in it
-        var ps = content && content.querySelectorAll('p') || [];
-        for(var idx = 0; idx < ps.length; idx++) {
-            var child = ps[idx];
-            // find the first paragraph that is not empty
-            if(!/^\s*$/.test(child.innerHTML) ) {
-                // that must be our leading section
-                // so enclose it in a <div>
-                leadSec = '<div id="lead_section">' + child.innerHTML + '</div>';
-                break;
+function validateRequest(state) {
+
+    var p = state.request.params,
+        server = p.server,
+        title = p.title,
+        revid = p.revid,
+        id = p.id;
+
+    state.apiRequest = {
+        format: 'json',
+        action: 'query',
+        prop: 'pageprops',
+        ppprop: 'graph_specs',
+        continue: ''
+    };
+
+    if (revid) {
+        if (!/^[0-9]+$/.test(revid)) {
+            // must be a non-negative integer
+            throw 'bad revid param';
+        }
+        revid = parseInt(revid);
+    }
+
+    if (revid) {
+        state.apiRequest.revids = revid;
+    } else if (title) {
+        if (title.indexOf('|') > -1) {
+            throw 'bad title param';
+        }
+        state.apiRequest.titles = title;
+    } else {
+        throw 'no revid or title given';
+    }
+
+    if (!/^[0-9a-f]+$/.test(id)) {
+        throw 'bad id param';
+    }
+    state.graphId = id;
+
+    // Remove optional part #2 from host (makes m. links appear as desktop to optimize cache)
+    // 1  2 3
+    // en.m.wikipedia.org
+    var srvParts = serverRe.exec(server);
+    if (!srvParts) {
+        throw 'bad server param';
+    }
+    server = (srvParts[1] || '') + srvParts[3];
+
+    state.server = domainMap[server] || server;
+    state.apiUrl = defaultProtocol + '//' + server + '/w/api.php';
+
+    return state;
+}
+
+/**
+ * Retrieve graph specifications from the server
+ * @param state is the object with the current state of the request processing
+ */
+function getSpec(state) {
+
+    var callApiInt;
+
+    var processResult = function (apiRes) {
+        if (apiRes.status !== 200) {
+            throw 'API result error code ' + apiRes.status;
+        }
+        var res = apiRes.body;
+        if (res.hasOwnProperty('error')) {
+            throw 'API result error: ' + JSON.stringify(res.error);
+        }
+
+        if (res.hasOwnProperty('warnings')) {
+            console.error('API warning: ' + JSON.stringify(res.warnings) +
+            ' from ' + state.server + JSON.stringify(state.apiRequest));
+        }
+        if (res.hasOwnProperty('query') && res.query.hasOwnProperty('pages')) {
+            var pages = res.query.pages,
+                graphData = null;
+
+            Object.getOwnPropertyNames(pages).some(function (k) {
+                var page = pages[k];
+                if (page.hasOwnProperty('pageprops') && page.pageprops.hasOwnProperty('graph_specs')) {
+                    var gs = JSON.parse(page.pageprops.graph_specs);
+                    if (gs.hasOwnProperty(state.graphId)) {
+                        graphData = gs[state.graphId];
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (graphData) {
+                state.graphData = graphData;
+                return state;
             }
         }
-        res.status(200).type('html').end(leadSec);
+        if (res.hasOwnProperty('continue')) {
+            callApiInt(state.apiUrl, merge(state.apiRequest, res.continue));
+        }
+        throw 'Unable to find graph_specs with the given id';
+    };
+
+    callApiInt = function(url, req) {
+        var reqOpts = {
+            uri: url,
+            query: req,
+            headers: {
+                'User-Agent': 'graph.ext backend (yurik at wikimedia)'
+            }
+        };
+        return preq(reqOpts)
+            .then(processResult)
+            .catch(function (reason) {
+                delete reqOpts.headers;
+                console.error('API call failed: ' + state.server + JSON.stringify(state.apiRequest));
+                throw reason; // re-throw
+            });
+    };
+
+    return callApiInt(state.apiUrl, state.apiRequest);
+}
+
+function renderOnCanvas(state) {
+    return new Promise(function (fulfill, reject){
+        if (!vega) {
+            throw 'Unable to load Vega npm module';
+        }
+
+        // In case of non-absolute URLs, use requesting server as "local"
+        vega.config.baseURL = defaultProtocol + '//' + state.server;
+
+        vega.headless.render({spec: state.graphData, renderer: 'canvas'}, function (err, result) {
+            if (err) {
+                reject(err);
+            } else {
+                var stream = result.canvas.pngStream();
+                state.response.status(200).type('png');
+                stream.on('data', function (chunk) {
+                    state.response.write(chunk);
+                });
+                stream.on('end', function () {
+                    state.response.end();
+                    fulfill(state);
+                });
+            }
+        });
     });
+}
+
+/**
+ * Main entry point for graphoid
+ */
+router.get('/:server/:title/:revid/:id.png', function(req, res) {
+
+    var render = Promise
+        .resolve({request: req, response: res})
+        .then(validateRequest)
+        .then(getSpec)
+        .then(renderOnCanvas);
+
+    failOnTimeout(render, timeout)
+        .catch(function (reason) {
+            console.error('Failed ' + JSON.stringify(req.params) + ' ' + reason);
+            if (reason.hasOwnProperty('stack')) {
+                console.error(reason.stack);
+            }
+            res.status(400).json(reason);
+        });
 });
 
 
-module.exports = function(appObj) {
+module.exports = function(app) {
 
-    app = appObj;
+    init(app.conf);
 
     return {
         path: '/v1',
         router: router
     };
-
 };
-

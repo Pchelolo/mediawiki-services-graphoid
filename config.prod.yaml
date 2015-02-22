@@ -36,3 +36,28 @@ services:
       # interface: localhost # uncomment to only listen on localhost
       # compressionLevel: 3 # output gzip compression level, 6 by default
       # more per-service config settings
+
+      # Graphoid-specific settings
+      # List of domains the service is allowed to access (with their subdomains)
+      domains:
+        - mediawiki.org
+        - wikibooks.org
+        - wikidata.org
+        - wikimedia.org
+        - wikimediafoundation.org
+        - wikinews.org
+        - wikipedia.org
+        - wikiquote.org
+        - wikisource.org
+        - wikiversity.org
+        - wikivoyage.org
+        - wiktionary.org
+      # Additional list of allowed domains with their replacements
+      # Even though the subdomains will also be allowed, the substitution
+      # will be done only on fully matched hostname.
+      # For example, it allows "graph.wmflabs.org" to be replaced with "localhost:12345"
+      domainMap: {}
+      # Which protocol should service use for protocol-relative URLs like //example.com/path
+      defaultProtocol: https
+      # Error if it takes longer than this to handle the request
+      timeout: 5000

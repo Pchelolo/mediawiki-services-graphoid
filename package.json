@@ -1,7 +1,7 @@
 {
-  "name": "service-template-node",
+  "name": "Graphoid",
   "version": "0.1.0",
-  "description": "A blueprint for MediaWiki REST API services",
+  "description": "renders vega graphs from mediawiki pages",
   "scripts": {
     "start": "service-runner",
     "test": "mocha",
@@ -9,23 +9,24 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/wikimedia/service-template-node.git"
+    "url": "https://gerrit.wikimedia.org/r/mediawiki/services/graphoid"
   },
   "keywords": [
-    "REST",
-    "API",
-    "service template",
+    "vega",
+    "graph",
     "MediaWiki"
   ],
-  "author": "Wikimedia Service Team <services@wikimedia.org>",
+  "author": "Yuri Astrakhan <yurik at wikimedia org>",
   "contributors": [
+    "Dan Andreescu <dandreescu@wikimedia.org>"
   ],
   "license": "Apache2",
   "bugs": {
     "url": "https://phabricator.wikimedia.org/tag/services/"
   },
-  "homepage": "https://github.com/wikimedia/service-template-node",
+  "homepage": "https://www.mediawiki.org/wiki/Extension:Graph",
   "dependencies": {
+    "vega": "git+http://git@github.com/nyurik/vega",
     "bluebird": "^2.9.9",
     "body-parser": "^1.12.0",
     "compression": "^1.4.1",
