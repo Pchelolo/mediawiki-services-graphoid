@@ -66,4 +66,4 @@ services:
       # Which protocol should service use for protocol-relative URLs like //example.com/path
       defaultProtocol: http
       # Error if it takes longer than this to handle the request
-      timeout: 10000
+      timeout: 5000

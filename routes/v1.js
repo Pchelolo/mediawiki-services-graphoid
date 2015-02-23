@@ -51,6 +51,11 @@ function init(app) {
     // Uncomment to console.log metrics calls
     //metrics = wrapMetrics(app.metrics);
 
+    // Workaround for missing funcs
+    metrics.increment = app.metrics.statsd.increment.bind(app.metrics.statsd);
+
+
+
     log('info/init', 'starting v1' );
     metrics.increment('v1.init');
 
@@ -71,7 +76,7 @@ function init(app) {
     }
 
     var validDomains = domains;
-    if (conf.domainMap && Object.getOwnPropertyNames(domainMap) > 0) {
+    if (conf.domainMap && Object.getOwnPropertyNames(conf.domainMap).length > 0) {
         domainMap = conf.domainMap;
         validDomains = validDomains.concat(Object.getOwnPropertyNames(domainMap))
     }
@@ -109,9 +114,9 @@ function initVega(domains) {
     // here, in case user has   'http:pathname', which for some strange reason is
     // parsed as correct by url lib.
     //
-    var originalSanitize = vega.data.load.sanitizeUrl;
+    var originalSanitize = vega.data.load.sanitizeUrl.bind(vega.data.load);
     vega.data.load.sanitizeUrl = function (urlOrig) {
-        url = originalSanitize(urlOrig);
+        var url = originalSanitize.call(vega.data.load, urlOrig);
         if (url) {
             var parts = urllib.parse(url);
             if (!parts.protocol || !parts.hostname) {
@@ -307,11 +312,11 @@ function renderOnCanvas(state) {
 
         // BUG: see comment above at vega.data.load.sanitizeUrl = ...
         // In case of non-absolute URLs, use requesting host as "local"
-        //vega.config.baseURL = defaultProtocol + '//' + state.host;
+        vega.config.baseURL = defaultProtocol + '//' + state.host;
 
         vega.headless.render({spec: state.graphData, renderer: 'canvas'}, function (err, result) {
             if (err) {
-                state.log.vegaerr = err;
+                state.log.vegaErr = err;
                 reject(new Err('error/vega', 'vega.error'));
             } else {
                 var stream = result.canvas.pngStream();
@@ -367,7 +372,7 @@ router.get('/:host/:title/:revid/:id.png', function(req, res) {
             } else if (reason !== null && typeof reason === 'object') {
                 l = merge(reason, l);
             } else {
-                l.exception = reason;
+                l.msg = reason;
             }
 
             res.status(400).json(msg);
