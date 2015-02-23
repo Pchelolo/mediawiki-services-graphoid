@@ -60,6 +60,7 @@ services:
       # will be done only on fully matched hostname.
       # For example, it allows "graph.wmflabs.org" to be replaced with "localhost:12345"
       domainMap:
+        graph3.wmflabs.org: localhost
         zero.wmflabs.org: localhost
         graphoid.wmflabs.org: localhost
 
