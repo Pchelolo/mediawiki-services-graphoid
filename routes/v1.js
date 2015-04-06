@@ -117,6 +117,7 @@ function initVega(domains) {
     vega.config.domainWhiteList = domains;
     vega.config.defaultProtocol = defaultProtocol;
     vega.config.safeMode = true;
+    vega.config.isNode = true; // Vega is flaky with its own detection, fails in tests and with IDE debug
 
     //
     // TODO/BUG:  In multithreaded env, we cannot set global vega.config var
