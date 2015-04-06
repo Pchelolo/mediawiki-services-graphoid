@@ -1,23 +1,36 @@
 'use strict';
 
-var router = require('express').Router();
+
+var sUtil = require('../lib/util');
+
+
+/**
+ * The main router object
+ */
+var router = sUtil.router();
+
 
 /**
  * GET /robots.txt
- * no indexing
+ * Instructs robots no indexing should occur on this domain.
  */
 router.get('/robots.txt', function(req, res) {
+
     res.set({
         'User-agent': '*',
         'Disallow': '/'
     }).end();
+
 });
+
 
 module.exports = function(appObj) {
 
     return {
         path: '/',
+        skip_domain: true,
         router: router
     };
 
 };
+

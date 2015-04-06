@@ -17,7 +17,7 @@ describe('page gets', function() {
     before(function () { return server.start(); });
 
     // common URI prefix for the page
-    var uri = server.config.uri + 'v1/page/Mulholland%20Drive%20%28film%29/';
+    var uri = server.config.uri + 'en.wikipedia.org/v1/page/Mulholland%20Drive%20%28film%29/';
 
     it('should get the whole page body', function() {
         return preq.get({
@@ -54,6 +54,18 @@ describe('page gets', function() {
             if(!/^<div id="lead_section">/.test(res.body)) {
                 throw new Error('This is not a leading section!');
             }
+        });
+    });
+
+    it('should throw a 404 for a non-existent page', function() {
+        return preq.get({
+            uri: server.config.uri + 'en.wikipedia.org/v1/page/Foobar_and_friends'
+        }).then(function(res) {
+            // if we are here, no error was thrown, not good
+            throw new Error('Expected an error to be thrown, got status: ', res.status);
+        }, function(err) {
+            // inspect the status
+            assert.deepEqual(err.status, 404);
         });
     });
 

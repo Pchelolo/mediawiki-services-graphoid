@@ -1,10 +1,16 @@
 'use strict';
 
-var express = require('express'),
-    preq = require('preq'),
-    Promise = require('bluebird'),
-    urllib = require('url'),
-    vega = null; // Visualization grammar - https://github.com/trifacta/vega
+var Promise = require('bluebird');
+var preq = require('preq');
+var domino = require('domino');
+var sUtil = require('../lib/util');
+var urllib = require('url');
+var vega = null; // Visualization grammar - https://github.com/trifacta/vega
+
+/**
+ * The main router object
+ */
+var router = sUtil.router();
 
 /**
  * Main log function
@@ -17,12 +23,7 @@ var log;
 var metrics;
 
 /**
- * The main router object
- */
-var router = express.Router();
-
-/**
- * A set of 'oldHost' => 'newHost' mappings
+ * A set of 'oldDomain' => 'newDomain' mappings
  */
 var domainMap = false;
 
@@ -37,7 +38,7 @@ var defaultProtocol = 'http:';
 var timeout = 10000;
 
 /**
- * Regex to validate host parameter
+ * Regex to validate domain parameter
  */
 var serverRe = null;
 
@@ -50,10 +51,6 @@ function init(app) {
 
     // Uncomment to console.log metrics calls
     //metrics = wrapMetrics(app.metrics);
-
-    // Workaround for missing funcs
-    metrics.increment = app.metrics.statsd.increment.bind(app.metrics.statsd);
-
 
 
     log('info/init', 'starting v1' );
@@ -124,8 +121,8 @@ function initVega(domains) {
             }
         }
         if (url && domainMap) {
-            url = url.replace(/^(https?:\/\/)([^#?\/]+)/, function (match, prot, host) {
-                var repl = domainMap[host];
+            url = url.replace(/^(https?:\/\/)([^#?\/]+)/, function (match, prot, domain) {
+                var repl = domainMap[domain];
                 return repl ? prot + repl : match;
             });
         }
@@ -150,7 +147,7 @@ function validateRequest(state) {
     var start = Date.now();
 
     var p = state.request.params,
-        host = p.host,
+        domain = p.domain,
         title = p.title,
         revid = p.revid,
         id = p.id;
@@ -189,23 +186,23 @@ function validateRequest(state) {
     }
     state.graphId = id;
 
-    var parts = serverRe.exec(host);
+    var parts = serverRe.exec(domain);
     if (!parts) {
-        throw new Err('info/param-host', 'req.host');
+        throw new Err('info/param-domain', 'req.domain');
     }
-    // Remove optional part #2 from host (makes m. links appear as desktop to optimize cache)
+    // Remove optional part #2 from domain (makes m. links appear as desktop to optimize cache)
     // 1  2 3
     // en.m.wikipedia.org
-    var host2 = parts[3];
+    var domain2 = parts[3];
     if (parts[1]) {
-        host2 = parts[1] + host2;
+        domain2 = parts[1] + domain2;
     }
-    host2 = (domainMap && domainMap[host2]) || host2;
+    domain2 = (domainMap && domainMap[domain2]) || domain2;
 
-    state.host = host2;
-    state.apiUrl = defaultProtocol + '//' + host2 + '/w/api.php';
-    if (host !== host2) {
-        state.log.backend = host2;
+    state.domain = domain2;
+    state.apiUrl = defaultProtocol + '//' + domain2 + '/w/api.php';
+    if (domain !== domain2) {
+        state.log.backend = domain2;
     }
 
     metrics.endTiming('req.time', start);
@@ -214,7 +211,7 @@ function validateRequest(state) {
 }
 
 /**
- * Retrieve graph specifications from the host
+ * Retrieve graph specifications from the domain
  * @param state is the object with the current state of the request processing
  */
 function downloadGraphDef(state) {
@@ -241,7 +238,7 @@ function downloadGraphDef(state) {
         };
         return preq(requestOpts)
             .then(function (resp) {
-                metrics.endTiming('host.time', startApiReq);
+                metrics.endTiming('domain.time', startApiReq);
                 return resp;
             });
 
@@ -254,18 +251,18 @@ function downloadGraphDef(state) {
 
         if (apiRes.status !== 200) {
             state.log.apiRetStatus = apiRes.status;
-            throw new Err('error/host-status', 'host.status');
+            throw new Err('error/domain-status', 'domain.status');
         }
 
         var res = apiRes.body;
         if (res.hasOwnProperty('error')) {
             state.log.apiRetError = res.error;
-            throw new Err('error/host-error', 'host.error');
+            throw new Err('error/domain-error', 'domain.error');
         }
 
         if (res.hasOwnProperty('warnings')) {
             state.log.apiWarning = res.warnings;
-            log('warn/host-warning', state.log);
+            log('warn/domain-warning', state.log);
             // Warnings are usually safe to continue
         }
 
@@ -293,10 +290,10 @@ function downloadGraphDef(state) {
         if (res.hasOwnProperty('continue')) {
             return merge(state.apiRequest, res.continue);
         }
-        throw new Err('info/host-no-graph', 'host.no-graph');
+        throw new Err('info/domain-no-graph', 'domain.no-graph');
 
     }).then(function () {
-        metrics.endTiming('host.total', startDefDownload);
+        metrics.endTiming('domain.total', startDefDownload);
         return state;
     });
 }
@@ -311,8 +308,8 @@ function renderOnCanvas(state) {
         var start = Date.now();
 
         // BUG: see comment above at vega.data.load.sanitizeUrl = ...
-        // In case of non-absolute URLs, use requesting host as "local"
-        vega.config.baseURL = defaultProtocol + '//' + state.host;
+        // In case of non-absolute URLs, use requesting domain as "local"
+        vega.config.baseURL = defaultProtocol + '//' + state.domain;
 
         vega.headless.render({spec: state.graphData, renderer: 'canvas'}, function (err, result) {
             if (err) {
@@ -337,7 +334,7 @@ function renderOnCanvas(state) {
 /**
  * Main entry point for graphoid
  */
-router.get('/:host/:title/:revid/:id.png', function(req, res) {
+router.get('/:title/:revid/:id.png', function(req, res) {
 
     var start = Date.now();
     var state = {request: req, response: res};
@@ -387,7 +384,8 @@ module.exports = function(app) {
     init(app);
 
     return {
-        path: '/v1',
+        path: '/',
+        api_version: 1,
         router: router
     };
 };

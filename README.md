@@ -2,9 +2,9 @@
 
 Template for creating MediaWiki Services in Node.js
 
-# Getting Started
+## Getting Started
 
-## Installation
+### Installation
 
 First, clone the repository
 
@@ -19,18 +19,14 @@ cd service-template-node
 npm install
 ```
 
-Finally, activate the development configuration file
-
-```
-ln -s config.dev.yaml config.yaml
-```
-
 You are now ready to get to work!
 
 * Inspect/modify/configure `app.js`
 * Add routes by placing files in `routes/` (look at the files there for examples)
 
-## Running the examples
+You can also read [the documentation](doc/).
+
+### Running the examples
 
 The template is a fully-working example, so you may try it right away. To
 start the server hosting the REST API, simply run (inside the repo's directory)
@@ -39,18 +35,23 @@ start the server hosting the REST API, simply run (inside the repo's directory)
 npm start
 ```
 
-This starts an HTTP server listening on `localhost:6927`. There are several routes
-you may query (with a browser, or `curl` and friends):
+This starts an HTTP server listening on `localhost:6927`. There are several
+routes you may query (with a browser, or `curl` and friends):
 
 * `http://localhost:6927/_info/`
 * `http://localhost:6927/_info/name`
 * `http://localhost:6927/_info/version`
 * `http://localhost:6927/_info/home`
-* `http://localhost:6927/v1/siteinfo/{uri}{/prop}`
-* `http://localhost:6927/v1/page/{title}`
-* `http://localhost:6927/v1/page/{title}/lead`
+* `http://localhost:6927/{domain}/v1/siteinfo{/prop}`
+* `http://localhost:6927/{domain}/v1/page/{title}`
+* `http://localhost:6927/{domain}/v1/page/{title}/lead`
+* `http://localhost:6927/ex/err/array`
+* `http://localhost:6927/ex/err/file`
+* `http://localhost:6927/ex/err/manual/error`
+* `http://localhost:6927/ex/err/manual/deny`
+* `http://localhost:6927/ex/err/auth`
 
-## Tests
+### Tests
 
 The template also includes a test suite a small set of executable tests. To fire
 them up, simply run:
@@ -66,6 +67,16 @@ reporting the percentage of code covered. Start it with:
 
 ```
 npm run-script coverage
+```
+
+### Troubleshooting
+
+In a lot of cases when there is an issue with node it helps to recreate the
+`node_modules` directory:
+
+```
+rm -r node_modules
+npm install
 ```
 
 Enjoy!

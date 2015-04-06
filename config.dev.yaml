@@ -1,13 +1,11 @@
-# Info about this config. Used for packaging & other purposes.
-info:
-  name: service-template-node
-  version: 0.0.1
-  description: A blueprint for MediaWiki REST API services
-
 # Number of worker processes to spawn.
 # Set to 0 to run everything in a single process without clustering.
 # Use 'ncpu' to run as many workers as there are CPU units
 num_workers: 0
+
+# Log error messages and gracefully restart a worker if v8 reports that it
+# uses more heap (note: not RSS) than this many mb.
+worker_heap_limit_mb: 250
 
 # Logger info
 logging:
@@ -20,12 +18,12 @@ logging:
 
 # Statsd metrics reporter
 metrics:
-  type: txstatsd
-  host: localhost
-  port: 8125
+  type: log
+  #host: localhost
+  #port: 8125
 
 services:
-  - name: service-template-node
+  - name: graphoid
     # a relative path or the name of an npm package, if different from name
     module: ./app.js
     # optionally, a version constraint of the npm package
@@ -34,7 +32,6 @@ services:
     conf:
       port: 6927
       # interface: localhost # uncomment to only listen on localhost
-      # compressionLevel: 3 # output gzip compression level, 6 by default
       # more per-service config settings
 
       # Graphoid-specific settings
