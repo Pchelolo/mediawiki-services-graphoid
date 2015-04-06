@@ -1,6 +1,6 @@
 'use strict';
 
-var Promise = require('bluebird');
+var BBPromise = require('bluebird');
 var preq = require('preq');
 var domino = require('domino');
 var sUtil = require('../lib/util');
@@ -43,48 +43,66 @@ var timeout = 10000;
 var serverRe = null;
 
 
-function init(app) {
+/*
+ * Utility functions
+ */
 
-    // The very first operation should set up our logger
-    log = app.logger.log.bind(app.logger);
-    metrics = app.metrics;
+function Err(message, metrics) {
+    this.message = message;
+    this.metrics = metrics;
+}
+Err.prototype = Object.create(Error.prototype);
+Err.prototype.constructor = Err;
 
-    // Uncomment to console.log metrics calls
-    //metrics = wrapMetrics(app.metrics);
+// NOTE: there are a few libraries that do this
+function merge() {
+    var result = {},
+        args = Array.prototype.slice.apply(arguments);
 
+    args.forEach(function (arg) {
+        Object.getOwnPropertyNames(arg).forEach(function (prop) {
+            result[prop] = arg[prop];
+        });
+    });
 
-    log('info/init', 'starting v1' );
-    metrics.increment('v1.init');
+    return result;
+}
 
-    try{
-        // Simplify debugging when vega is not available
-        vega = require('vega');
-    } catch(err) {
-        log('fatal/vega', err);
+// Adapted from https://www.promisejs.org/patterns/
+function delay(time) {
+    return new BBPromise(function (fulfill) {
+        setTimeout(fulfill, time);
+    });
+}
+
+function failOnTimeout(promise, time) {
+    return time <= 0 ? promise :
+       BBPromise.race([promise, delay(time).then(function () {
+            throw 'timeout'; // we later compare on this value
+        })]);
+}
+
+/**
+ * When enabled, logs metrics functions calls
+ * @param obj
+ * @returns {{increment: *, endTiming: *}}
+ */
+function wrapMetrics(obj) {
+    function logWrap(name){
+        return function(){
+            console.log(name + JSON.stringify([].slice.call(arguments)));
+            return obj[name].apply(obj, arguments);
+        };
     }
-
-    var conf = app.conf;
-    var domains = conf.domains || domains;
-    timeout = conf.timeout || timeout;
-    defaultProtocol = conf.defaultProtocol || defaultProtocol;
-    if (!defaultProtocol.endsWith(':')) {
-        // colon in YAML has special meaning, allow it to be skipped
-        defaultProtocol = defaultProtocol + ':';
+    var result = {};
+    for (var id in obj) {
+        try {
+            if (typeof(obj[id]) === "function") {
+                result[id] = logWrap(id);
+            }
+        } catch (err) {}
     }
-
-    var validDomains = domains;
-    if (conf.domainMap && Object.getOwnPropertyNames(conf.domainMap).length > 0) {
-        domainMap = conf.domainMap;
-        validDomains = validDomains.concat(Object.getOwnPropertyNames(domainMap))
-    }
-
-    if (validDomains.length == 0) {
-        log('fatal/config', 'Config must have non-empty "domains" (list) and/or "domainMap" (dict)');
-        process.exit(1);
-    }
-
-    serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + validDomains.join('|') + ')$');
-    initVega(domains);
+    return result;
 }
 
 
@@ -220,7 +238,7 @@ function downloadGraphDef(state) {
     state.log.calls = [];
 
     // http://stackoverflow.com/questions/24660096/correct-way-to-write-loops-for-promise
-    var loopAsync = Promise.method(function (action, condition, value) {
+    var loopAsync = BBPromise.method(function (action, condition, value) {
         var req = condition(value);
         if (req) {
             return action(req).then(loopAsync.bind(null, action, condition));
@@ -299,7 +317,7 @@ function downloadGraphDef(state) {
 }
 
 function renderOnCanvas(state) {
-    return new Promise(function (fulfill, reject){
+    return new BBPromise(function (fulfill, reject){
         if (!vega) {
             // If vega is down, keep reporting it
             throw new Err('fatal/vega', 'vega.missing');
@@ -339,7 +357,7 @@ router.get('/:title/:revid/:id.png', function(req, res) {
     var start = Date.now();
     var state = {request: req, response: res};
 
-    var render = Promise
+    var render = BBPromise
         .resolve(state)
         .then(validateRequest)
         .then(downloadGraphDef)
@@ -379,6 +397,51 @@ router.get('/:title/:revid/:id.png', function(req, res) {
 });
 
 
+function init(app) {
+
+    // The very first operation should set up our logger
+    log = app.logger.log.bind(app.logger);
+    metrics = app.metrics;
+
+    // Uncomment to console.log metrics calls
+    //metrics = wrapMetrics(app.metrics);
+
+
+    log('info/init', 'starting v1' );
+    metrics.increment('v1.init');
+
+    try{
+        // Simplify debugging when vega is not available
+        vega = require('vega');
+    } catch(err) {
+        log('fatal/vega', err);
+    }
+
+    var conf = app.conf;
+    var domains = conf.domains || domains;
+    timeout = conf.timeout || timeout;
+    defaultProtocol = conf.defaultProtocol || defaultProtocol;
+    if (!defaultProtocol.endsWith(':')) {
+        // colon in YAML has special meaning, allow it to be skipped
+        defaultProtocol = defaultProtocol + ':';
+    }
+
+    var validDomains = domains;
+    if (conf.domainMap && Object.getOwnPropertyNames(conf.domainMap).length > 0) {
+        domainMap = conf.domainMap;
+        validDomains = validDomains.concat(Object.getOwnPropertyNames(domainMap));
+    }
+
+    if (validDomains.length === 0) {
+        log('fatal/config', 'Config must have non-empty "domains" (list) and/or "domainMap" (dict)');
+        process.exit(1);
+    }
+
+    serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + validDomains.join('|') + ')$');
+    initVega(domains);
+}
+
+
 module.exports = function(app) {
 
     init(app);
@@ -389,67 +452,3 @@ module.exports = function(app) {
         router: router
     };
 };
-
-
-
-/*
- * Utility functions
- */
-
-function Err(message, metrics) {
-    this.message = message;
-    this.metrics = metrics;
-}
-Err.prototype = Object.create(Error.prototype);
-Err.prototype.constructor = Err;
-
-// NOTE: there are a few libraries that do this
-function merge() {
-    var result = {},
-        args = Array.prototype.slice.apply(arguments);
-
-    args.forEach(function (arg) {
-        Object.getOwnPropertyNames(arg).forEach(function (prop) {
-            result[prop] = arg[prop];
-        });
-    });
-
-    return result;
-}
-
-// Adapted from https://www.promisejs.org/patterns/
-function delay(time) {
-    return new Promise(function (fulfill) {
-        setTimeout(fulfill, time);
-    });
-}
-
-function failOnTimeout(promise, time) {
-    return time <= 0 ? promise :
-        Promise.race([promise, delay(time).then(function () {
-            throw 'timeout'; // we later compare on this value
-        })]);
-}
-
-/**
- * When enabled, logs metrics functions calls
- * @param obj
- * @returns {{increment: *, endTiming: *}}
- */
-function wrapMetrics(obj) {
-    function logWrap(name){
-        return function(){
-            console.log(name + JSON.stringify([].slice.call(arguments)));
-            return obj[name].apply(obj, arguments);
-        };
-    }
-    var result = {};
-    for (var id in obj) {
-        try {
-            if (typeof(obj[id]) == "function") {
-                result[id] = logWrap(id);
-            }
-        } catch (err) {}
-    }
-    return result;
-}
