@@ -1,0 +1,25 @@
+[Unit]
+Description=graphoid - renders vega graphs from mediawiki pages
+Documentation=https://www.mediawiki.org/wiki/Extension:Graph
+After=network.target local-fs.target
+
+[Service]
+Type=simple
+LimitNOFILE=10000
+PIDFile=%t/graphoid.pid
+User=graphoid
+Group=graphoid
+WorkingDirectory=/srv/deployment/graphoid/deploy
+Environment="NODE_PATH='/srv/deployment/graphoid/deploy/node_modules'" "GRAPHOID_PORT=6927"
+ExecStart=/usr/bin/nodejs src/server.js -c /etc/graphoid/config.yaml
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=graphoid
+TimeoutStartSec=5
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+

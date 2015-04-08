@@ -1,5 +1,5 @@
 {
-  "name": "Graphoid",
+  "name": "graphoid",
   "version": "0.1.0",
   "description": "renders vega graphs from mediawiki pages",
   "main": "./app.js",
