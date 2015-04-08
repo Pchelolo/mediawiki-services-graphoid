@@ -30,7 +30,7 @@ var domainMap = false;
 /**
  * For protocol-relative URLs  (they begin with //), which protocol should we use
  */
-var defaultProtocol = 'http';
+var defaultProtocol = 'https';
 
 /**
  * Limit request to 10 seconds by default
@@ -109,6 +109,9 @@ function initVega(domains) {
         if (url) {
             var parts = urllib.parse(url);
             if (!parts.protocol || !parts.hostname) {
+                url = null;
+            } else if (parts.protocol !== 'http:' && parts.protocol !== 'https:') {
+                // load.sanitizeUrl() already does this, but double check to be safe
                 url = null;
             }
         }
