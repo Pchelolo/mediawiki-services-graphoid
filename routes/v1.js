@@ -5,7 +5,7 @@ var preq = require('preq');
 var domino = require('domino');
 var sUtil = require('../lib/util');
 var urllib = require('url');
-var vega = null; // Visualization grammar - https://github.com/trifacta/vega
+var vega = require('vega'); // Visualization grammar - https://github.com/trifacta/vega
 
 /**
  * The main router object
@@ -30,7 +30,7 @@ var domainMap = false;
 /**
  * For protocol-relative URLs  (they begin with //), which protocol should we use
  */
-var defaultProtocol = 'http:';
+var defaultProtocol = 'http';
 
 /**
  * Limit request to 10 seconds by default
@@ -87,11 +87,8 @@ function failOnTimeout(promise, time) {
  * @param domains array of strings - which domains are valid
  */
 function initVega(domains) {
-    if (!vega) {
-        return;
-    }
     vega.config.domainWhiteList = domains;
-    vega.config.defaultProtocol = defaultProtocol;
+    vega.config.defaultProtocol = defaultProtocol + ':';
     vega.config.safeMode = true;
     vega.config.isNode = true; // Vega is flaky with its own detection, fails in tests and with IDE debug
 
@@ -195,7 +192,7 @@ function validateRequest(state) {
     domain2 = (domainMap && domainMap[domain2]) || domain2;
 
     state.domain = domain2;
-    state.apiUrl = defaultProtocol + '//' + domain2 + '/w/api.php';
+    state.apiUrl = defaultProtocol + '://' + domain2 + '/w/api.php';
     if (domain !== domain2) {
         state.log.backend = domain2;
     }
@@ -257,7 +254,7 @@ function downloadGraphDef(state) {
 
         if (res.hasOwnProperty('warnings')) {
             state.log.apiWarning = res.warnings;
-            log('warn/domain-warning', state.log);
+            state.request.logger.log('warn/domain-warning', state.log);
             // Warnings are usually safe to continue
         }
 
@@ -295,16 +292,11 @@ function downloadGraphDef(state) {
 
 function renderOnCanvas(state) {
     return new BBPromise(function (fulfill, reject){
-        if (!vega) {
-            // If vega is down, keep reporting it
-            throw new Err('fatal/vega', 'vega.missing');
-        }
-
         var start = Date.now();
 
         // BUG: see comment above at vega.data.load.sanitizeUrl = ...
         // In case of non-absolute URLs, use requesting domain as "local"
-        vega.config.baseURL = defaultProtocol + '//' + state.domain;
+        vega.config.baseURL = defaultProtocol + '://' + state.domain;
 
         vega.headless.render({spec: state.graphData, renderer: 'canvas'}, function (err, result) {
             if (err) {
@@ -340,15 +332,15 @@ router.get('/:title/:revid/:id.png', function(req, res) {
         .then(downloadGraphDef)
         .then(renderOnCanvas);
 
-    failOnTimeout(render, timeout)
+    return failOnTimeout(render, timeout)
         .then(function () {
 
             // SUCCESS
             // For now, record everything, but soon we should scale it back
-            log('info/ok', state.log);
+            req.logger.log('info/ok', state.log);
             metrics.endTiming('total.time', start);
 
-        },function (reason) {
+        }, function (reason) {
 
             // FAILURE
             var l = state.log;
@@ -369,7 +361,7 @@ router.get('/:title/:revid/:id.png', function(req, res) {
 
             res.status(400).json(msg);
             metrics.increment(mx);
-            log(msg, l);
+            req.logger.log(msg, l);
         });
 });
 
@@ -383,21 +375,10 @@ function init(app) {
     log('info/init', 'starting v1' );
     metrics.increment('v1.init');
 
-    try{
-        // Simplify debugging when vega is not available
-        vega = require('vega');
-    } catch(err) {
-        log('fatal/vega', err);
-    }
-
     var conf = app.conf;
     var domains = conf.domains || domains;
     timeout = conf.timeout || timeout;
     defaultProtocol = conf.defaultProtocol || defaultProtocol;
-    if (!defaultProtocol.endsWith(':')) {
-        // colon in YAML has special meaning, allow it to be skipped
-        defaultProtocol = defaultProtocol + ':';
-    }
 
     var validDomains = domains;
     if (conf.domainMap && Object.getOwnPropertyNames(conf.domainMap).length > 0) {
