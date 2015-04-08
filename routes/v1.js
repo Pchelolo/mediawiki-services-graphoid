@@ -83,30 +83,6 @@ function failOnTimeout(promise, time) {
 }
 
 /**
- * When enabled, logs metrics functions calls
- * @param obj
- * @returns {{increment: *, endTiming: *}}
- */
-function wrapMetrics(obj) {
-    function logWrap(name){
-        return function(){
-            console.log(name + JSON.stringify([].slice.call(arguments)));
-            return obj[name].apply(obj, arguments);
-        };
-    }
-    var result = {};
-    for (var id in obj) {
-        try {
-            if (typeof(obj[id]) === "function") {
-                result[id] = logWrap(id);
-            }
-        } catch (err) {}
-    }
-    return result;
-}
-
-
-/**
  * Init vega rendering
  * @param domains array of strings - which domains are valid
  */
@@ -403,10 +379,6 @@ function init(app) {
     // The very first operation should set up our logger
     log = app.logger.log.bind(app.logger);
     metrics = app.metrics;
-
-    // Uncomment to console.log metrics calls
-    //metrics = wrapMetrics(app.metrics);
-
 
     log('info/init', 'starting v1' );
     metrics.increment('v1.init');
