@@ -92,6 +92,14 @@ function initVega(domains) {
     vega.config.safeMode = true;
     vega.config.isNode = true; // Vega is flaky with its own detection, fails in tests and with IDE debug
 
+    // set up vega loggers to log to our device instead of stderr
+    vega.log = function(msg) {
+        log('debug/vega', msg);
+    };
+    vega.error = function(msg) {
+        log('warn/vega', msg);
+    };
+
     //
     // TODO/BUG:  In multithreaded env, we cannot set global vega.config var
     // while handling multiple requests from multiple hosts.
@@ -123,11 +131,11 @@ function initVega(domains) {
         }
 
         if (!url) {
-            log('info/url-deny', urlOrig);
+            log('debug/url-deny', urlOrig);
         } else if (urlOrig !== url) {
-            log('info/url-fix', {'req': urlOrig, 'repl': url});
+            log('debug/url-fix', {'req': urlOrig, 'repl': url});
         } else {
-            log('info/url-ok', urlOrig);
+            log('trace/url-ok', urlOrig);
         }
         return url;
     };
@@ -257,7 +265,7 @@ function downloadGraphDef(state) {
 
         if (res.hasOwnProperty('warnings')) {
             state.log.apiWarning = res.warnings;
-            state.request.logger.log('warn/domain-warning', state.log);
+            state.request.logger.log('info/domain-warning', state.log);
             // Warnings are usually safe to continue
         }
 
@@ -340,7 +348,7 @@ router.get('/:title/:revid/:id.png', function(req, res) {
 
             // SUCCESS
             // For now, record everything, but soon we should scale it back
-            req.logger.log('info/ok', state.log);
+            req.logger.log('trace/ok', state.log);
             metrics.endTiming('total.time', start);
 
         }, function (reason) {
