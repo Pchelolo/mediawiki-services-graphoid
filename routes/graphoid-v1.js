@@ -2,7 +2,6 @@
 
 var BBPromise = require('bluebird');
 var preq = require('preq');
-var domino = require('domino');
 var sUtil = require('../lib/util');
 var urllib = require('url');
 var vega = require('vega'); // Visualization grammar - https://github.com/trifacta/vega
