@@ -50,7 +50,7 @@
   "deploy": {
     "target": "ubuntu",
     "dependencies": {
-      "_all": []
+      "_all": ["libcairo-dev"]
     }
   }
 }
