@@ -1,5 +1,6 @@
 .idea
 graphoid.iml
+Dockerfile
 coverage
 config.yaml
 node_modules
