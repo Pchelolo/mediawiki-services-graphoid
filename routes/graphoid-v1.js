@@ -149,10 +149,13 @@ function validateRequest(state) {
     var start = Date.now();
 
     var p = state.request.params,
+        format = p.format,
         domain = p.domain,
         title = p.title,
         revid = p.revid,
-        id = p.id;
+        id_ext = p.id.split('.', 2),
+        id = id_ext[0],
+        ext = id_ext[1];
 
     state.log = p; // log all parameters of the request
 
@@ -163,6 +166,14 @@ function validateRequest(state) {
         ppprop: 'graph_specs',
         continue: ''
     };
+
+    // check the format / extension
+    if (ext && ext !== format) {
+        throw new Err('info/param-ext', 'req.id');
+    }
+    if (format !== 'png') {
+        throw new Err('info/param-format', 'req.format');
+    }
 
     if (revid) {
         if (!/^[0-9]+$/.test(revid)) {
@@ -331,7 +342,7 @@ function renderOnCanvas(state) {
 /**
  * Main entry point for graphoid
  */
-router.get('/:title/:revid/:id.png', function(req, res) {
+router.get('/:format/:title/:revid/:id', function(req, res) {
 
     var start = Date.now();
     var state = {request: req, response: res};

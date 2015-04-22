@@ -19,10 +19,10 @@ describe('graphoid', function() {
     // common URI prefix for v1
     var uri = function(domain, title, revId, graphId) {
         return server.config.uri +
-            ( domain !== null ? domain : 'mediawiki.org' ) + '/v1/' +
+            ( domain !== null ? domain : 'mediawiki.org' ) + '/v1/png/' +
             ( title !== null ? title : 'Extension:Graph%2FDemo' ) + '/' +
             ( revId !== null ? revId : '1508976' ) + '/' +
-            ( graphId !== null ? graphId : '597fd63eb884b45edcd7f71a2788bf01ce52ce9b' ) + '.png';
+            ( graphId !== null ? graphId : '597fd63eb884b45edcd7f71a2788bf01ce52ce9b' );
     };
 
     it('should get a PNG image from the Extension:Graph/Demo page without revision ID', function() {
@@ -97,6 +97,28 @@ describe('graphoid', function() {
         }, function(err) {
             assert.deepEqual(err.status, 400);
             assert.deepEqual(err.body, 'info/param-domain');
+        });
+    });
+
+    it('format - extension mismatch', function() {
+        return preq.get({
+            uri: uri(null, null, null, null) + '.jpg'
+        }).then(function(res) {
+            throw new Error('Expected an error to be thrown, got status: ' + res.status);
+        }, function(err) {
+            assert.deepEqual(err.status, 400);
+            assert.deepEqual(err.body, 'info/param-ext');
+        });
+    });
+
+    it('wrong format', function() {
+        return preq.get({
+            uri: server.config.uri + 'bla/v1/foo/bar/1234/5678'
+        }).then(function(res) {
+            throw new Error('Expected an error to be thrown, got status: ' + res.status);
+        }, function(err) {
+            assert.deepEqual(err.status, 400);
+            assert.deepEqual(err.body, 'info/param-format');
         });
     });
 
