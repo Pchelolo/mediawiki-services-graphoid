@@ -50,7 +50,9 @@
   "deploy": {
     "target": "ubuntu",
     "dependencies": {
-      "_all": ["libcairo-dev"]
+      "_all": ["libcairo2-dev", "libgif-dev", "libpango1.0-dev"],
+      "ubuntu": ["libjpeg62-dev"],
+      "debian": ["libjpeg62-turbo-dev"]
     }
   }
 }
