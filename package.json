@@ -1,6 +1,6 @@
 {
   "name": "graphoid",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "renders vega graphs from mediawiki pages",
   "main": "./app.js",
   "scripts": {
