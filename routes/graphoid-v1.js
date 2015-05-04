@@ -168,7 +168,7 @@ function validateRequest(state) {
     };
 
     // check the format / extension
-    if (ext && ext !== format) {
+    if (ext !== format) {
         throw new Err('info/param-ext', 'req.id');
     }
     if (format !== 'png') {
@@ -393,11 +393,11 @@ function init(app) {
     log = app.logger.log.bind(app.logger);
     metrics = app.metrics;
 
-    log('info/init', 'starting v1' );
+    log('info/init', 'starting v1');
     metrics.increment('v1.init');
 
     var conf = app.conf;
-    var domains = conf.domains || domains;
+    var domains = conf.domains || [];
     timeout = conf.timeout || timeout;
     defaultProtocol = conf.defaultProtocol || defaultProtocol;
 
@@ -412,7 +412,15 @@ function init(app) {
         process.exit(1);
     }
 
-    serverRe = new RegExp('^([-a-z0-9]+\\.)?(m\\.|zero\\.)?(' + validDomains.join('|') + ')$');
+    // TODO: handle other symbols (even though they shouldn't be in the domains
+    // TODO: implement per-host default protocol, e.g. wikipedia.org -> https, wmflabs.org -> http
+    //       per-demain default protocol will probably not be enabled for production
+    serverRe = new RegExp('^([^@/:]*\.)?(' +
+    validDomains
+        .map(function (s) {
+            return s.replace('.', '\\.');
+        })
+        .join('|') + ')$');
     initVega(domains);
 }
 
