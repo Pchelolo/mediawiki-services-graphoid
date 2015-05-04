@@ -199,18 +199,12 @@ function validateRequest(state) {
     }
     state.graphId = id;
 
-    var parts = serverRe.exec(domain);
-    if (!parts) {
+    if (!serverRe.test(domain)) {
         throw new Err('info/param-domain', 'req.domain');
     }
-    // Remove optional part #2 from domain (makes m. links appear as desktop to optimize cache)
-    // 1  2 3
-    // en.m.wikipedia.org
-    var domain2 = parts[3];
-    if (parts[1]) {
-        domain2 = parts[1] + domain2;
-    }
-    domain2 = (domainMap && domainMap[domain2]) || domain2;
+
+    // TODO: Optimize 'en.m.wikipedia.org' -> 'en.wikipedia.org'
+    var domain2 = (domainMap && domainMap[domain]) || domain;
 
     state.domain = domain2;
     state.apiUrl = defaultProtocol + '://' + domain2 + '/w/api.php';
