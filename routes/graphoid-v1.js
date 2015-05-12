@@ -319,7 +319,11 @@ function renderOnCanvas(state) {
                 reject(new Err('error/vega', 'vega.error'));
             } else {
                 var stream = result.canvas.pngStream();
-                state.response.status(200).type('png');
+                state.response
+                    .status(200)
+                    .type('png')
+                    // For now, lets re-cache more frequently
+                    .header('Cache-Control', 'public, s-maxage=30, max-age=30');
                 stream.on('data', function (chunk) {
                     state.response.write(chunk);
                 });
