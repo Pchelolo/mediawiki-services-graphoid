@@ -378,7 +378,10 @@ router.get('/:format/:title/:revid/:id', function(req, res) {
                 l.msg = reason;
             }
 
-            res.status(400).json(msg);
+            res
+                .status(400)
+                .header('Cache-Control', 'public, s-maxage=30, max-age=30')
+                .json(msg);
             metrics.increment(mx);
             req.logger.log(msg, l);
         });
