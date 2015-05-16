@@ -56,7 +56,9 @@ services:
       # Even though the subdomains will also be allowed, the substitution
       # will be done only on fully matched hostname.
       # For example, it allows "graph.wmflabs.org" to be replaced with "localhost:12345"
-      domainMap: {}
+      domainMap:
+        127.0.0.1: localhost:8080
+
       # Which protocol should service use for protocol-relative URLs like //example.com/path
       defaultProtocol: http
       # Error if it takes longer than this to handle the request
