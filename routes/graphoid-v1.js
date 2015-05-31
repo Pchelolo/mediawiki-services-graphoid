@@ -168,7 +168,7 @@ function validateRequest(state) {
     };
 
     // check the format / extension
-    if (ext !== format) {
+    if (ext && ext !== format) {
         throw new Err('info/param-ext', 'req.id');
     }
     if (format !== 'png') {
@@ -258,18 +258,18 @@ function downloadGraphDef(state) {
 
         if (apiRes.status !== 200) {
             state.log.apiRetStatus = apiRes.status;
-            throw new Err('error/domain-status', 'domain.status');
+            throw new Err('error/mwapi-status', 'mwapi.status');
         }
 
         var res = apiRes.body;
         if (res.hasOwnProperty('error')) {
             state.log.apiRetError = res.error;
-            throw new Err('error/domain-error', 'domain.error');
+            throw new Err('error/mwapi-error', 'mwapi.error');
         }
 
         if (res.hasOwnProperty('warnings')) {
             state.log.apiWarning = res.warnings;
-            state.request.logger.log('info/domain-warning', state.log);
+            state.request.logger.log('info/mwapi-warning', state.log);
             // Warnings are usually safe to continue
         }
 
@@ -280,7 +280,11 @@ function downloadGraphDef(state) {
             Object.getOwnPropertyNames(pages).some(function (k) {
                 var page = pages[k];
                 if (page.hasOwnProperty('pageprops') && page.pageprops.hasOwnProperty('graph_specs')) {
-                    var gs = JSON.parse(page.pageprops.graph_specs);
+                    try {
+                        var gs = JSON.parse(page.pageprops.graph_specs);
+                    } catch (err) {
+                        throw new Err('error/bad-json', 'mwapi.bad-json');
+                    }
                     if (gs.hasOwnProperty(state.graphId)) {
                         graphData = gs[state.graphId];
                         return true;
@@ -297,10 +301,10 @@ function downloadGraphDef(state) {
         if (res.hasOwnProperty('continue')) {
             return merge(state.apiRequest, res.continue);
         }
-        throw new Err('info/domain-no-graph', 'domain.no-graph');
+        throw new Err('info/mwapi-no-graph', 'mwapi.no-graph');
 
     }).then(function () {
-        metrics.endTiming('domain.total', startDefDownload);
+        metrics.endTiming('mwapi.total', startDefDownload);
         return state;
     });
 }
