@@ -241,7 +241,7 @@ function downloadGraphDef(state) {
         var requestOpts = {
             uri: state.apiUrl,
             query: req,
-            headers: {'User-Agent': 'graph.ext backend (yurik at wikimedia)'}
+            headers: {'User-Agent': 'graphoid (yurik at wikimedia)'}
         };
         return preq(requestOpts)
             .then(function (resp) {
