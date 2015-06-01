@@ -169,7 +169,7 @@ function validateRequest(state) {
 
     // check the format / extension
     if (ext && ext !== format) {
-        throw new Err('info/param-ext', 'req.id');
+        throw new Err('info/param-ext', 'req.ext');
     }
     if (format !== 'png') {
         throw new Err('info/param-format', 'req.format');
@@ -212,7 +212,7 @@ function validateRequest(state) {
         state.log.backend = domain2;
     }
 
-    metrics.endTiming('req.time', start);
+    metrics.endTiming('total.req', start);
 
     return state;
 }
@@ -245,7 +245,7 @@ function downloadGraphDef(state) {
         };
         return preq(requestOpts)
             .then(function (resp) {
-                metrics.endTiming('domain.time', startApiReq);
+                metrics.endTiming('total.mwapicall', startApiReq);
                 return resp;
             });
 
@@ -258,7 +258,7 @@ function downloadGraphDef(state) {
 
         if (apiRes.status !== 200) {
             state.log.apiRetStatus = apiRes.status;
-            throw new Err('error/mwapi-status', 'mwapi.status');
+            throw new Err('error/mwapi-status', 'mwapi.bad-status');
         }
 
         var res = apiRes.body;
@@ -304,7 +304,7 @@ function downloadGraphDef(state) {
         throw new Err('info/mwapi-no-graph', 'mwapi.no-graph');
 
     }).then(function () {
-        metrics.endTiming('mwapi.total', startDefDownload);
+        metrics.endTiming('total.mwapi', startDefDownload);
         return state;
     });
 }
@@ -333,7 +333,7 @@ function renderOnCanvas(state) {
                 });
                 stream.on('end', function () {
                     state.response.end();
-                    metrics.endTiming('vega.time', start);
+                    metrics.endTiming('total.vega', start);
                     fulfill(state);
                 });
             }
@@ -361,7 +361,7 @@ router.get('/:format/:title/:revid/:id', function(req, res) {
             // SUCCESS
             // For now, record everything, but soon we should scale it back
             req.logger.log('trace/ok', state.log);
-            metrics.endTiming('total.time', start);
+            metrics.endTiming('total.success', start);
 
         }, function (reason) {
 
