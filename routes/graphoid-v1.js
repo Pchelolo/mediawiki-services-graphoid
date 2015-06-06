@@ -6,6 +6,9 @@ var sUtil = require('../lib/util');
 var urllib = require('url');
 var vega = require('vega'); // Visualization grammar - https://github.com/trifacta/vega
 
+
+require('string.prototype.endswith');
+
 /**
  * The main router object
  */
@@ -212,7 +215,11 @@ function validateRequest(state) {
         state.log.backend = domain2;
     }
 
-    metrics.endTiming('total.req', start);
+    // Log which wiki is actually requesting this
+    if (domain.endsWith('.org')) {
+        domain = domain.substr(0, domain.length - 4);
+    }
+    metrics.endTiming('total.req.' + domain.replace('.', '-'), start);
 
     return state;
 }
