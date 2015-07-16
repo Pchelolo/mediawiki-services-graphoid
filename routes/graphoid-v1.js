@@ -289,12 +289,13 @@ function downloadGraphDef(state) {
                 if (page.hasOwnProperty('pageprops') && page.pageprops.hasOwnProperty('graph_specs')) {
                     try {
                         var gs = JSON.parse(page.pageprops.graph_specs);
+
+                        if (gs.hasOwnProperty(state.graphId)) {
+                            graphData = gs[state.graphId];
+                            return true;
+                        }
                     } catch (err) {
                         throw new Err('error/bad-json', 'mwapi.bad-json');
-                    }
-                    if (gs.hasOwnProperty(state.graphId)) {
-                        graphData = gs[state.graphId];
-                        return true;
                     }
                 }
                 return false;

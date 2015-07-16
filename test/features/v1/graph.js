@@ -21,8 +21,8 @@ describe('graphoid', function() {
         return server.config.uri +
             ( domain !== null ? domain : 'mediawiki.org' ) + '/v1/png/' +
             ( title !== null ? title : 'Extension:Graph%2FDemo' ) + '/' +
-            ( revId !== null ? revId : '1508976' ) + '/' +
-            ( graphId !== null ? graphId : '597fd63eb884b45edcd7f71a2788bf01ce52ce9b' );
+            ( revId !== null ? revId : '1686336' ) + '/' +
+            ( graphId !== null ? graphId : '1533aaad45c733dcc7e07614b54cbae4119a6747' );
     };
 
     it('should get a PNG image from the Extension:Graph/Demo page without revision ID', function() {
@@ -52,7 +52,7 @@ describe('graphoid', function() {
             throw new Error('Expected an error to be thrown, got status: ' + res.status);
         }, function(err) {
             assert.deepEqual(err.status, 400);
-            assert.deepEqual(err.body, 'info/domain-no-graph');
+            assert.deepEqual(err.body, 'info/mwapi-no-graph');
         });
     });
 
