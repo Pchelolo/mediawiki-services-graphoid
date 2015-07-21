@@ -7,8 +7,6 @@ var urllib = require('url');
 var vega = require('vega'); // Visualization grammar - https://github.com/trifacta/vega
 
 
-require('string.prototype.endswith');
-
 /**
  * The main router object
  */

@@ -1,7 +1,7 @@
 {
   "name": "graphoid",
   "version": "0.1.4",
-  "description": "renders vega graphs from mediawiki pages",
+  "description": "Renders vega graphs from mediawiki pages",
   "main": "./app.js",
   "scripts": {
     "start": "service-runner",
@@ -29,24 +29,23 @@
   },
   "homepage": "https://www.mediawiki.org/wiki/Extension:Graph",
   "dependencies": {
-    "bluebird": "^2.9.24",
-    "body-parser": "^1.12.3",
-    "bunyan": "^1.3.5",
-    "compression": "^1.4.3",
-    "express": "^4.12.3",
-    "js-yaml": "^3.2.7",
-    "node-uuid": "^1.4.3",
-    "preq": "^0.3.13",
-    "service-runner": "^0.1.8",
-    "string.prototype.endswith": "^0.2.0",
+    "bluebird": "~2.8.2",
+    "body-parser": "^1.13.2",
+    "bunyan": "^1.4.0",
+    "cassandra-uuid": "^0.0.2",
+    "compression": "^1.5.1",
+    "express": "^4.13.1",
+    "js-yaml": "^3.3.1",
+    "preq": "^0.4.4",
+    "service-runner": "^0.2.1",
     "vega": "git+http://git@github.com/nyurik/vega"
   },
   "devDependencies": {
-    "assert": "^1.3.0",
-    "istanbul": "^0.3.13",
-    "mocha": "^2.2.4",
-    "mocha-jshint": "0.0.9",
-    "mocha-lcov-reporter": "0.0.1"
+    "istanbul": "^0.3.17",
+    "mocha": "^2.2.5",
+    "mocha-jshint": "^2.2.3",
+    "mocha-lcov-reporter": "^0.0.2",
+    "swagger-router": "^0.1.1"
   },
   "deploy": {
     "target": "ubuntu",

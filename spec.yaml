@@ -1,0 +1,77 @@
+swagger: '2.0'
+info:
+  version: 0.1.4
+  title: Graphoid
+  description: Renders vega graphs from mediawiki pages
+  termsOfService: https://wikimediafoundation.org/wiki/Terms_of_Use
+  contact:
+    name: Yuri Astrakhan <yurik at wikimedia org>
+  license:
+    name: Apache2
+    url: http://www.apache.org/licenses/LICENSE-2.0
+x-default-params:
+  domain: mediawiki.org
+paths:
+  # from routes/root.js
+  /robots.txt:
+    get:
+      tags:
+        - Root
+        - Robots
+      description: Gets robots.txt
+      x-monitor: false
+  /:
+    get:
+      tags:
+        - Root
+      description: The root service end-point
+      produces:
+        - application/json
+      x-amples:
+        - title: spec from root
+          request:
+            query:
+              spec: true
+          response:
+            status: 200
+  # from routes/info.js
+  /_info:
+    get:
+      tags:
+        - Service information
+      description: Gets information about the service
+      produces:
+        - application/json
+      x-amples:
+        - title: retrieve service info
+          request: {}
+          response:
+            status: 200
+            headers:
+              content-type: application/json
+            body:
+              name: /.+/
+              description: /.+/
+              version: /.+/
+              home: /.+/
+  # from routes/graphoid-v1.js
+  /{domain}/v1/{format}/{title}/{revid}/{id}:
+    get:
+      tags:
+        - Graph render
+      description: Renders the graph present in a given MediaWiki page
+      produces:
+        - image/png
+      x-amples:
+        - title: retrieve PNG from mediawiki.org
+          request:
+            params:
+              format: png
+              title: Extension:Graph/Demo
+              revid: '1686336'
+              id: '1533aaad45c733dcc7e07614b54cbae4119a6747'
+          response:
+            status: 200
+            headers:
+              content-type: image/png
+            body: /.+/
