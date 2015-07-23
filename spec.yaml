@@ -74,4 +74,3 @@ paths:
             status: 200
             headers:
               content-type: image/png
-            body: /.+/
