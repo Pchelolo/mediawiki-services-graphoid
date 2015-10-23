@@ -1,6 +1,6 @@
 {
   "name": "graphoid",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Renders vega graphs from mediawiki pages",
   "main": "./app.js",
   "scripts": {
@@ -38,6 +38,7 @@
     "js-yaml": "^3.3.1",
     "preq": "^0.4.4",
     "service-runner": "^0.2.1",
+    "underscore": "^1.8.3",
     "vega": "git+http://git@github.com/nyurik/vega"
   },
   "devDependencies": {

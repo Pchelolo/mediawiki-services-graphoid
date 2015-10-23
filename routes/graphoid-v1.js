@@ -3,8 +3,7 @@
 var BBPromise = require('bluebird');
 var preq = require('preq');
 var sUtil = require('../lib/util');
-var urllib = require('url');
-var vega = require('vega'); // Visualization grammar - https://github.com/trifacta/vega
+var vega = require('../lib/vega');
 
 
 /**
@@ -23,24 +22,9 @@ var log;
 var metrics;
 
 /**
- * A set of 'oldDomain' => 'newDomain' mappings
- */
-var domainMap = false;
-
-/**
- * For protocol-relative URLs  (they begin with //), which protocol should we use
- */
-var defaultProtocol = 'https';
-
-/**
  * Limit request to 10 seconds by default
  */
 var timeout = 10000;
-
-/**
- * Regex to validate domain parameter
- */
-var serverRe = null;
 
 
 /*
@@ -81,66 +65,6 @@ function failOnTimeout(promise, time) {
             throw 'timeout'; // we later compare on this value
         })]);
 }
-
-/**
- * Init vega rendering
- * @param domains array of strings - which domains are valid
- */
-function initVega(domains) {
-    vega.config.domainWhiteList = domains;
-    vega.config.defaultProtocol = defaultProtocol + ':';
-    vega.config.safeMode = true;
-    vega.config.isNode = true; // Vega is flaky with its own detection, fails in tests and with IDE debug
-
-    // set up vega loggers to log to our device instead of stderr
-    vega.log = function(msg) {
-        log('debug/vega', msg);
-    };
-    vega.error = function(msg) {
-        log('warn/vega', msg);
-    };
-
-    //
-    // TODO/BUG:  In multithreaded env, we cannot set global vega.config var
-    // while handling multiple requests from multiple hosts.
-    // Until vega is capable of per-rendering context, we must bail on any
-    // relative (no hostname) data or image URLs.
-    //
-    // Do not set vega.config.baseURL. Current sanitizer implementation will fail
-    // because of the missing protocol (safeMode == true). Still, lets double check
-    // here, in case user has   'http:pathname', which for some strange reason is
-    // parsed as correct by url lib.
-    //
-    var originalSanitize = vega.data.load.sanitizeUrl.bind(vega.data.load);
-    vega.data.load.sanitizeUrl = function (urlOrig) {
-        var url = originalSanitize.call(vega.data.load, urlOrig);
-        if (url) {
-            var parts = urllib.parse(url);
-            if (!parts.protocol || !parts.hostname) {
-                url = null;
-            } else if (parts.protocol !== 'http:' && parts.protocol !== 'https:') {
-                // load.sanitizeUrl() already does this, but double check to be safe
-                url = null;
-            }
-        }
-        if (url && domainMap) {
-            url = url.replace(/^(https?:\/\/)([^#?\/]+)/, function (match, prot, domain) {
-                var repl = domainMap[domain];
-                return repl ? prot + repl : match;
-            });
-        }
-
-        if (!url) {
-            log('debug/url-deny', urlOrig);
-        } else if (urlOrig !== url) {
-            log('debug/url-fix', {'req': urlOrig, 'repl': url});
-        } else {
-            log('trace/url-ok', urlOrig);
-        }
-        return url;
-    };
-}
-
 
 /**
  * Parse and validate request parameters
@@ -200,15 +124,15 @@ function validateRequest(state) {
     }
     state.graphId = id;
 
-    if (!serverRe.test(domain)) {
+    if (!vega.serverRe.test(domain)) {
         throw new Err('info/param-domain', 'req.domain');
     }
 
     // TODO: Optimize 'en.m.wikipedia.org' -> 'en.wikipedia.org'
-    var domain2 = (domainMap && domainMap[domain]) || domain;
+    var domain2 = (vega.domainMap && vega.domainMap[domain]) || domain;
 
     state.domain = domain2;
-    state.apiUrl = defaultProtocol + '://' + domain2 + '/w/api.php';
+    state.apiUrl = vega.defaultProtocol + '://' + domain2 + '/w/api.php';
     if (domain !== domain2) {
         state.log.backend = domain2;
     }
@@ -316,34 +240,30 @@ function downloadGraphDef(state) {
 }
 
 function renderOnCanvas(state) {
-    return new BBPromise(function (fulfill, reject){
-        var start = Date.now();
-
-        // BUG: see comment above at vega.data.load.sanitizeUrl = ...
-        // In case of non-absolute URLs, use requesting domain as "local"
-        vega.config.baseURL = defaultProtocol + '://' + state.domain;
-
-        vega.headless.render({spec: state.graphData, renderer: 'canvas'}, function (err, result) {
-            if (err) {
-                state.log.vegaErr = err;
-                reject(new Err('error/vega', 'vega.error'));
-            } else {
-                var stream = result.canvas.pngStream();
-                state.response
-                    .status(200)
-                    .type('png')
-                    // For now, lets re-cache more frequently
-                    .header('Cache-Control', 'public, s-maxage=30, max-age=30');
-                stream.on('data', function (chunk) {
-                    state.response.write(chunk);
-                });
-                stream.on('end', function () {
-                    state.response.end();
-                    metrics.endTiming('total.vega', start);
-                    fulfill(state);
-                });
-            }
+    var start = Date.now();
+    return vega.render({
+        domain: state.domain,
+        renderOpts: {spec: state.graphData, renderer: 'canvas'}
+    }).then(function (result) {
+        var pendingPromise = BBPromise.pending();
+        var stream = result.canvas.pngStream();
+        state.response
+            .status(200)
+            .type('png')
+            // For now, lets re-cache more frequently
+            .header('Cache-Control', 'public, s-maxage=30, max-age=30');
+        stream.on('data', function (chunk) {
+            state.response.write(chunk);
         });
+        stream.on('end', function () {
+            state.response.end();
+            metrics.endTiming('total.vega', start);
+            pendingPromise.resolve(state);
+        });
+        return pendingPromise.promise;
+    }).catch(function (err) {
+        state.log.vegaErr = err;
+        throw new Err('error/vega', 'vega.error');
     });
 }
 
@@ -408,31 +328,9 @@ function init(app) {
     metrics.increment('v1.init');
 
     var conf = app.conf;
-    var domains = conf.domains || [];
     timeout = conf.timeout || timeout;
-    defaultProtocol = conf.defaultProtocol || defaultProtocol;
 
-    var validDomains = domains;
-    if (conf.domainMap && Object.getOwnPropertyNames(conf.domainMap).length > 0) {
-        domainMap = conf.domainMap;
-        validDomains = validDomains.concat(Object.getOwnPropertyNames(domainMap));
-    }
-
-    if (validDomains.length === 0) {
-        log('fatal/config', 'Config must have non-empty "domains" (list) and/or "domainMap" (dict)');
-        process.exit(1);
-    }
-
-    // TODO: handle other symbols (even though they shouldn't be in the domains
-    // TODO: implement per-host default protocol, e.g. wikipedia.org -> https, wmflabs.org -> http
-    //       per-demain default protocol will probably not be enabled for production
-    serverRe = new RegExp('^([^@/:]*\.)?(' +
-    validDomains
-        .map(function (s) {
-            return s.replace('.', '\\.');
-        })
-        .join('|') + ')$');
-    initVega(domains);
+    vega.initVega(log, conf.defaultProtocol, conf.domains, conf.domainMap);
 }
 
 
