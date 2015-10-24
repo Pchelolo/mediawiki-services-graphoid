@@ -23,6 +23,12 @@ var metrics;
 var timeout = 10000;
 
 
+/**
+ * Async version of the can canvas.toBuffer()
+ * @type {Function}
+ */
+var canvasToBuffer;
+
 /*
  * Utility functions
  */
@@ -60,17 +66,16 @@ function validateRequest(state) {
 
     state.log = p; // log all parameters of the request
 
-    if (format !== 'png') {
+    if (format !== 'png' && format !== 'svg' && format !== 'all') {
         throw new Err('info/param-format', 'req.format');
     }
+    state.format = format;
 
     if (!vega.serverRe.test(domain)) {
         throw new Err('info/param-domain', 'req.domain');
     }
-
     // TODO: Optimize 'en.m.wikipedia.org' -> 'en.wikipedia.org'
     var domain2 = (vega.domainMap && vega.domainMap[domain]) || domain;
-
     state.domain = domain2;
     if (domain !== domain2) {
         state.log.backend = domain2;
@@ -90,32 +95,67 @@ function validateRequest(state) {
     return state;
 }
 
-function renderOnCanvas(state) {
-    var start = Date.now();
+function renderImage(state, isSvg) {
     return vega.render({
         domain: state.domain,
-        renderOpts: {spec: state.graphData, renderer: 'canvas'}
-    }).then(function (result) {
-        var pendingPromise = BBPromise.pending();
-        var stream = result.canvas.pngStream();
-        state.response
-            .status(200)
-            .type('png')
-            // For now, lets re-cache more frequently
-            .header('Cache-Control', 'public, s-maxage=30, max-age=30');
-        stream.on('data', function (chunk) {
-            state.response.write(chunk);
-        });
-        stream.on('end', function () {
-            state.response.end();
-            metrics.endTiming('total.vega', start);
-            pendingPromise.resolve(state);
-        });
-        return pendingPromise.promise;
-    }).catch(function (err) {
-        state.log.vegaErr = err;
+        renderOpts: {spec: state.graphData, renderer: isSvg ? 'svg' : 'canvas'}
+    }).then(isSvg ? function (result) {
+            return result.svg;
+        } : function (result) {
+            if (!canvasToBuffer) {
+                canvasToBuffer = BBPromise.promisify(result.canvas.toBuffer);
+            }
+            return canvasToBuffer.call(result.canvas);
+        }
+    );
+}
+
+function renderRequest(state) {
+    var start = Date.now();
+    var promise;
+    if (state.format === 'all') {
+        // TODO: BUG: Possible bug due to async - vega looses state
+        promise = BBPromise.all([renderImage(state, false), renderImage(state, true)])
+            .spread(function (pngData, svgData) {
+                var headers = {};
+                if (state.request.headers.title) {
+                    headers.title = state.request.headers.title;
+                }
+                if (state.request.headers.revid) {
+                    headers.revid = state.request.headers.revid;
+                }
+                state.response
+                    .header('Cache-Control', 'public, s-maxage=30, max-age=30')
+                    .json({
+                        "headers": headers,
+                        "data": {
+                            "png": {
+                                "headers": {"content-type": "image/png"},
+                                "body": pngData
+                            },
+                            "svg": {
+                                "headers": {"content-type": "image/svg+xml"},
+                                "body": svgData
+                            }
+                        }
+                    });
+                metrics.endTiming('total.vega', start);
+            });
+    } else {
+        promise = renderImage(state, state.format === 'svg')
+            .then(function (buffer) {
+                state.response
+                    .type(state.format)
+                    .header('Cache-Control', 'public, s-maxage=30, max-age=30')
+                    .send(buffer);
+                metrics.endTiming('total.vega', start);
+            });
+    }
+    return promise.catch(function (err) {
+        state.log.vegaErr = err.message;
+        state.log.vegaErrStack = err.stack;
         throw new Err('error/vega', 'vega.error');
-    });
+    }).return(state);
 }
 
 /**
@@ -129,7 +169,7 @@ function renderGraph(req, res) {
     var render = BBPromise
         .resolve(state)
         .then(validateRequest)
-        .then(renderOnCanvas);
+        .then(renderRequest);
 
     return failOnTimeout(render, timeout)
         .then(function () {
@@ -183,8 +223,6 @@ module.exports = function(app) {
     //var bodyParser = require('body-parser').json();
 
     router.post('/:format', renderGraph);
-    router.post('/:format/:title', renderGraph);
-    router.post('/:format/:title/:revid', renderGraph);
 
     return {
         path: '/',
