@@ -112,41 +112,45 @@ function renderImage(state, isSvg) {
 
 function renderRequest(state) {
     var start = Date.now();
+    var headersToReturn = {};
+    // headers always received in lower case
+    if (state.request.headers.title) {
+        headersToReturn.Title = state.request.headers.title;
+    }
+    if (state.request.headers.revisionid) {
+        headersToReturn.RevisionId = state.request.headers.revisionid;
+    }
+    _.each(headersToReturn, function (val, key) {
+        state.response.header(key, val);
+    });
+
     var promise;
     if (state.format === 'all') {
         // TODO: BUG: Possible bug due to async - vega looses state
         promise = BBPromise.all([renderImage(state, false), renderImage(state, true)])
             .spread(function (pngData, svgData) {
-                var headers = {};
-                if (state.request.headers.title) {
-                    headers.title = state.request.headers.title;
-                }
-                if (state.request.headers.revid) {
-                    headers.revid = state.request.headers.revid;
-                }
-                state.response
-                    .header('Cache-Control', 'public, s-maxage=30, max-age=30')
-                    .json({
-                        "headers": headers,
-                        "data": {
-                            "png": {
-                                "headers": {"content-type": "image/png"},
-                                "body": pngData
-                            },
-                            "svg": {
-                                "headers": {"content-type": "image/svg+xml"},
-                                "body": svgData
-                            }
+                state.response.header('Cache-Control', 'public, s-maxage=30, max-age=30');
+                state.response.json({
+                    "headers": headersToReturn,
+                    "data": {
+                        "png": {
+                            "headers": {"content-type": "image/png"},
+                            "body": pngData
+                        },
+                        "svg": {
+                            "headers": {"content-type": "image/svg+xml"},
+                            "body": svgData
                         }
-                    });
+                    }
+                });
                 metrics.endTiming('total.vega', start);
             });
     } else {
         promise = renderImage(state, state.format === 'svg')
             .then(function (buffer) {
                 state.response
-                    .type(state.format)
                     .header('Cache-Control', 'public, s-maxage=30, max-age=30')
+                    .type(state.format)
                     .send(buffer);
                 metrics.endTiming('total.vega', start);
             });
