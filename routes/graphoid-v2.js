@@ -105,24 +105,22 @@ function renderImage(state, isSvg) {
             if (!canvasToBuffer) {
                 canvasToBuffer = BBPromise.promisify(result.canvas.toBuffer);
             }
-            return canvasToBuffer.call(result.canvas);
+            return canvasToBuffer.call(result.canvas).then(function (buf) {
+                return buf.toString('base64');
+            });
         }
     );
 }
 
 function renderRequest(state) {
     var start = Date.now();
-    var headersToReturn = {};
     // headers always received in lower case
     if (state.request.headers.title) {
-        headersToReturn.Title = state.request.headers.title;
+        state.response.header('Title', state.request.headers.title);
     }
     if (state.request.headers.revisionid) {
-        headersToReturn.RevisionId = state.request.headers.revisionid;
+        state.response.header('RevisionId', state.request.headers.revisionid);
     }
-    _.each(headersToReturn, function (val, key) {
-        state.response.header(key, val);
-    });
 
     var promise;
     if (state.format === 'all') {
@@ -131,16 +129,13 @@ function renderRequest(state) {
             .spread(function (pngData, svgData) {
                 state.response.header('Cache-Control', 'public, s-maxage=30, max-age=30');
                 state.response.json({
-                    "headers": headersToReturn,
-                    "data": {
-                        "png": {
-                            "headers": {"content-type": "image/png"},
-                            "body": pngData
-                        },
-                        "svg": {
-                            "headers": {"content-type": "image/svg+xml"},
-                            "body": svgData
-                        }
+                    "png": {
+                        "headers": {"content-type": "image/png"},
+                        "body": pngData
+                    },
+                    "svg": {
+                        "headers": {"content-type": "image/svg+xml"},
+                        "body": svgData
                     }
                 });
                 metrics.endTiming('total.vega', start);
