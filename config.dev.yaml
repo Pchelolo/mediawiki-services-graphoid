@@ -47,6 +47,17 @@ services:
       # no_proxy_list:
       #   - domain1.com
       #   - domain2.org
+      # the list of incoming request headers that can be logged; if left empty,
+      # the following headers are allowed: cache-control, content-length,
+      # content-type, if-match, user-agent, x-request-id
+      # log_header_whitelist:
+      #   - cache-control
+      #   - content-length
+      #   - content-type
+      #   - if-match
+      #   - user-agent
+      #   - x-request-id
+
       # Graphoid-specific settings
       # List of domains the service is allowed to access (with their subdomains)
       domains:
