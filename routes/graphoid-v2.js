@@ -66,7 +66,7 @@ function validateRequest(state) {
 
     state.log = p; // log all parameters of the request
 
-    if (format !== 'png' && format !== 'svg' && format !== 'all') {
+    if (format !== 'png' && format !== 'svg') {
         throw new Err('info/param-format', 'req.format');
     }
     state.format = format;
@@ -95,23 +95,6 @@ function validateRequest(state) {
     return state;
 }
 
-function renderImage(state, isSvg) {
-    return vega.render({
-        domain: state.domain,
-        renderOpts: {spec: state.graphData, renderer: isSvg ? 'svg' : 'canvas'}
-    }).then(isSvg ? function (result) {
-            return result.svg;
-        } : function (result) {
-            if (!canvasToBuffer) {
-                canvasToBuffer = BBPromise.promisify(result.canvas.toBuffer);
-            }
-            return canvasToBuffer.call(result.canvas).then(function (buf) {
-                return buf.toString('base64');
-            });
-        }
-    );
-}
-
 function renderRequest(state) {
     var start = Date.now();
     // headers always received in lower case
@@ -122,35 +105,25 @@ function renderRequest(state) {
         state.response.header('RevisionId', state.request.headers.revisionid);
     }
 
-    var promise;
-    if (state.format === 'all') {
-        // TODO: BUG: Possible bug due to async - vega looses state
-        promise = BBPromise.all([renderImage(state, false), renderImage(state, true)])
-            .spread(function (pngData, svgData) {
-                state.response.header('Cache-Control', 'public, s-maxage=30, max-age=30');
-                state.response.json({
-                    "png": {
-                        "headers": {"content-type": "image/png"},
-                        "body": pngData
-                    },
-                    "svg": {
-                        "headers": {"content-type": "image/svg+xml"},
-                        "body": svgData
-                    }
-                });
-                metrics.endTiming('total.vega', start);
-            });
-    } else {
-        promise = renderImage(state, state.format === 'svg')
-            .then(function (buffer) {
-                state.response
-                    .header('Cache-Control', 'public, s-maxage=30, max-age=30')
-                    .type(state.format)
-                    .send(buffer);
-                metrics.endTiming('total.vega', start);
-            });
-    }
-    return promise.catch(function (err) {
+    var isSvg = state.format === 'svg';
+
+    return vega.render({
+        domain: state.domain,
+        renderOpts: {spec: state.graphData, renderer: isSvg ? 'svg' : 'canvas'}
+    }).then(isSvg ? function (result) {
+        return result.svg;
+    } : function (result) {
+        if (!canvasToBuffer) {
+            canvasToBuffer = BBPromise.promisify(result.canvas.toBuffer);
+        }
+        return canvasToBuffer.call(result.canvas);
+    }).then(function (result) {
+        state.response
+            .header('Cache-Control', 'public, s-maxage=30, max-age=30')
+            .type(state.format)
+            .send(result);
+        metrics.endTiming('total.vega', start);
+    }).catch(function (err) {
         state.log.vegaErr = err.message;
         state.log.vegaErrStack = err.stack;
         throw new Err('error/vega', 'vega.error');
