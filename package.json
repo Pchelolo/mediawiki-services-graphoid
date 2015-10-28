@@ -45,6 +45,8 @@
     "vega": "git+http://git@github.com/nyurik/vega"
   },
   "devDependencies": {
+    "mkdirp": "^0.5.1",
+
     "extend": "^3.0.0",
     "istanbul": "^0.3.22",
     "mocha": "^2.3.3",
